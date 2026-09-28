@@ -1,0 +1,18 @@
+# Build output (CMake, Visual Studio "Open Folder", CLion)
+build/
+out/
+cmake-build-*/
+CMakeUserPresets.json
+
+# IDE files
+.vs/
+.idea/
+*.user
+*.suo
+
+# Runtime files created by the app
+imgui.ini
+terraforge_map_*.png
+
+# Personal Claude Code settings (shared settings live in .claude/settings.json)
+.claude/settings.local.json

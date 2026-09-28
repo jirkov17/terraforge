@@ -1,0 +1,22 @@
+# Core: terrain data and algorithms. Pure C++ without graphics, so it is easy to unit test.
+add_library(terraforge_core STATIC
+    core/Brush.cpp
+    core/Heightmap.cpp
+    core/MapColorizer.cpp
+    core/TerrainGenerator.cpp)
+target_include_directories(terraforge_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(terraforge_core PRIVATE fastnoiselite)
+terraforge_set_warnings(terraforge_core)
+
+# App: window, rendering and UI on top of the core.
+add_executable(terraforge
+    app/App.cpp
+    app/MapRenderer.cpp
+    app/Window.cpp
+    app/main.cpp)
+target_link_libraries(terraforge PRIVATE terraforge_core imgui_raylib raylib)
+terraforge_set_warnings(terraforge)
+
+# Visual Studio: run the app from the folder with the .exe (exported PNGs land there).
+set_target_properties(terraforge PROPERTIES
+    VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:terraforge>")
