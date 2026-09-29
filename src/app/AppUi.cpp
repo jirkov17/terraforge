@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <cstdlib>
 #include <format>
 #include <initializer_list>
 #include <string>
@@ -102,6 +103,25 @@ void App::drawBrushCursor() const {
     DrawCircleV(center, 2.0f * pixel, color);
 }
 
+void App::drawMountainPasses() const {
+    if (!m_showPasses || m_geographyDirty) {
+        return;
+    }
+    // The map symbol of a pass: two arcs facing away from each other, ")(", like the two
+    // slopes the road squeezes between. Sizes are in screen pixels, whatever the zoom.
+    const float pixel = 1.0f / m_camera.zoom;
+    const float radius = 7.0f * pixel;
+    const float thickness = 2.0f * pixel;
+    constexpr Color kPassColor{58, 38, 26, 235};
+    for (const MountainPass& pass : m_geography.passes) {
+        const Vector2 center{static_cast<float>(pass.x) + 0.5f, static_cast<float>(pass.y) + 0.5f};
+        const Vector2 west{center.x - 1.25f * radius, center.y};
+        const Vector2 east{center.x + 1.25f * radius, center.y};
+        DrawRing(west, radius - thickness, radius, -50.0f, 50.0f, 12, kPassColor);
+        DrawRing(east, radius - thickness, radius, 130.0f, 230.0f, 12, kPassColor);
+    }
+}
+
 void App::drawUi() {
     const float top = drawMainMenu();
     const float bottom = drawStatusBar();
@@ -163,6 +183,7 @@ float App::drawMainMenu() {
         if (ImGui::MenuItem(m_text(TextId::MenuRivers), nullptr, &m_colors.rivers)) {
             m_needsRecolor = true;
         }
+        ImGui::MenuItem(m_text(TextId::MenuPasses), nullptr, &m_showPasses);
         ImGui::Separator();
         if (ImGui::MenuItem(m_text(TextId::MenuReliefMap), "M", m_colors.mode == MapMode::Relief)) {
             m_colors.mode = MapMode::Relief;
@@ -239,7 +260,13 @@ float App::drawStatusBar() {
                 static_cast<std::size_t>(x);
             if (knowsGeography) {
                 const Hydrology& water = m_geography.hydrology;
-                if (water.isLake(i, h)) {
+                const bool nearPass =
+                    m_showPasses && std::ranges::any_of(m_geography.passes, [&](const auto& p) {
+                        return std::abs(p.x - x) <= 2 && std::abs(p.y - y) <= 2;
+                    });
+                if (nearPass) {
+                    kind = TextId::StatusPass;
+                } else if (water.isLake(i, h)) {
                     kind = TextId::StatusLake;
                 } else if (water.isRiver(i, h)) {
                     kind = TextId::StatusRiver;
@@ -509,6 +536,8 @@ void App::drawGeographyWindow() {
             m_geographyDirty = true;  // rivers make the land around them wetter: redo the climate
         }
     }
+
+    ImGui::Checkbox(withId(m_text(TextId::MenuPasses), "showpasses").c_str(), &m_showPasses);
 
     if (ImGui::CollapsingHeader(withId(m_text(TextId::SectionClimate), "climate").c_str(),
                                 ImGuiTreeNodeFlags_DefaultOpen)) {

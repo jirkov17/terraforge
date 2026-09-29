@@ -17,6 +17,10 @@ Geography analyzeGeography(const Heightmap& map, const GeographySettings& settin
     Geography geography;
     geography.hydrology = computeHydrology(map, hydrology);
     geography.climate = computeClimate(map, geography.hydrology, climate);
+
+    MountainPassSettings passes;
+    passes.seaLevel = settings.seaLevel;
+    geography.passes = findMountainPasses(map, passes);
     return geography;
 }
 

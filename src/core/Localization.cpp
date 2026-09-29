@@ -29,6 +29,7 @@ constexpr auto kTranslations = std::to_array<Translation>({
     {TextId::MenuHillshade, "Hillshade", "Отмывка рельефа"},
     {TextId::MenuCoastline, "Coastline", "Береговая линия"},
     {TextId::MenuRivers, "Rivers and lakes", "Реки и озёра"},
+    {TextId::MenuPasses, "Mountain passes", "Горные перевалы"},
     {TextId::MenuReliefMap, "Relief map", "Карта рельефа"},
     {TextId::MenuBiomeMap, "Biome map", "Карта биомов"},
     {TextId::MenuLanguage, "Language", "Язык"},
@@ -126,6 +127,7 @@ constexpr auto kTranslations = std::to_array<Translation>({
     {TextId::StatusLand, "land", "суша"},
     {TextId::StatusLake, "lake", "озеро"},
     {TextId::StatusRiver, "river", "река"},
+    {TextId::StatusPass, "mountain pass", "горный перевал"},
     {TextId::StatusOutsideMap, "Cursor is outside the map", "Курсор за пределами карты"},
     {TextId::StatusZoom, "Zoom", "Масштаб"},
 

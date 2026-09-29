@@ -22,6 +22,7 @@ enum class TextId {
     MenuHillshade,
     MenuCoastline,
     MenuRivers,
+    MenuPasses,
     MenuReliefMap,
     MenuBiomeMap,
     MenuLanguage,
@@ -106,6 +107,7 @@ enum class TextId {
     StatusLand,
     StatusLake,
     StatusRiver,
+    StatusPass,
     StatusOutsideMap,
     StatusZoom,
 

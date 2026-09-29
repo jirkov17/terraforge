@@ -45,6 +45,7 @@ private:
 
     // Drawing (AppUi.cpp). The panel functions return the edge that borders the map area.
     void drawBrushCursor() const;
+    void drawMountainPasses() const;
     void drawUi();
     float drawMainMenu();                  // returns the menu bar height
     float drawStatusBar();                 // returns its top edge
@@ -84,6 +85,7 @@ private:
     bool m_shapeIsPainted = false;  // the shape mask was edited with Land / Sea
     bool m_fitPending = true;       // fit the map once the UI has been laid out
     bool m_quitRequested = false;   // File > Exit
+    bool m_showPasses = true;
     bool m_showGenerator = false;
     bool m_showGeography = false;
     int m_erosionDroplets = 150'000;

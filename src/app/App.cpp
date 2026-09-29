@@ -78,6 +78,7 @@ void App::run() {
 
         BeginMode2D(m_camera);
         m_renderer.draw();
+        drawMountainPasses();
         drawBrushCursor();
         EndMode2D();
 

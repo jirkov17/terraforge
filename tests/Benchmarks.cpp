@@ -71,7 +71,8 @@ TEST(Benchmark, DISABLED_Geography) {
         lakes += water.isLake(i, h) ? 1 : 0;
         rivers += water.isRiver(i, h) ? 1 : 0;
     }
-    std::printf("  land %d cells, lakes %d, rivers %d\n", land, lakes, rivers);
+    std::printf("  land %d cells, lakes %d, rivers %d, mountain passes %zu\n", land, lakes, rivers,
+                geography.passes.size());
 
     // Share of each biome on land (Sea, Glacier, Tundra, ... in enum order), for the default
     // climate and for a hot south.

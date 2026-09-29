@@ -10,6 +10,7 @@ add_library(terraforge_core STATIC
     core/Hydrology.cpp
     core/Localization.cpp
     core/MapColorizer.cpp
+    core/MountainPasses.cpp
     core/TerrainGenerator.cpp)
 target_include_directories(terraforge_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(terraforge_core PRIVATE fastnoiselite)

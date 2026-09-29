@@ -2,6 +2,9 @@
 
 #include "core/Climate.hpp"
 #include "core/Hydrology.hpp"
+#include "core/MountainPasses.hpp"
+
+#include <vector>
 
 namespace tf {
 
@@ -19,6 +22,7 @@ struct GeographySettings {
 struct Geography {
     Hydrology hydrology;  // lakes and rivers
     Climate climate;      // temperature, moisture and biomes; uses the rivers and lakes
+    std::vector<MountainPass> passes;
 };
 
 [[nodiscard]] Geography analyzeGeography(const Heightmap& map, const GeographySettings& settings);
