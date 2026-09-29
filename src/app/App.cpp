@@ -6,7 +6,10 @@
 #include <raymath.h>
 #include <rlImGui.h>
 
+#include "core/Erosion.hpp"
+
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <format>
@@ -209,6 +212,24 @@ void App::applyShapePreset(ShapePreset preset) {
     makeShapeMask(m_shapeMask, preset, m_generator.seed);
     m_shapeIsPainted = false;
     rebuildTerrain();
+}
+
+void App::runErosion() {
+    ErosionSettings settings;
+    settings.droplets = m_erosionDroplets;
+    settings.seed = m_generator.seed + m_erosionRuns++;
+    settings.seaLevel = m_colors.seaLevel;
+
+    const auto start = std::chrono::steady_clock::now();
+    erode(m_map, settings);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start);
+
+    m_needsRecolor = true;
+    m_hasManualEdits = true;  // regenerating would throw the erosion away
+    const long long milliseconds = elapsed.count();
+    m_statusMessage = std::vformat(m_text(TextId::ErosionDone),
+                                   std::make_format_args(m_erosionDroplets, milliseconds));
 }
 
 void App::fitMapToScreen() {

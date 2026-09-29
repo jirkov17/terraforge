@@ -35,6 +35,7 @@ private:
     void regenerate();      // new noise (seed or noise settings changed) + the terrain
     void rebuildTerrain();  // combines the cached noise with the shape mask: fast
     void applyShapePreset(ShapePreset preset);
+    void runErosion();
     void fitMapToScreen();
     void exportPng();
     void setLanguage(Language language);  // switches the UI and saves the choice
@@ -47,6 +48,7 @@ private:
     float drawToolbar(float top);          // returns its right edge
     float drawPropertiesPanel(float top);  // returns its left edge
     void drawGeneratorWindow();
+    void drawGeographyWindow();
     void drawControlsWindow();
 
     [[nodiscard]] Vector2 mouseCell() const;  // mouse position in map cell coordinates
@@ -77,6 +79,9 @@ private:
     bool m_fitPending = true;       // fit the map once the UI has been laid out
     bool m_quitRequested = false;   // File > Exit
     bool m_showGenerator = false;
+    bool m_showGeography = false;
+    int m_erosionDroplets = 150'000;
+    int m_erosionRuns = 0;  // each run uses a new seed, so repeated runs keep carving
     bool m_showControls = false;
     bool m_showImGuiDemo = false;
     Rectangle m_mapArea{};  // screen area not covered by the UI, where the map is shown

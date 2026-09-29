@@ -101,6 +101,9 @@ void App::drawUi() {
     if (m_showGenerator) {
         drawGeneratorWindow();
     }
+    if (m_showGeography) {
+        drawGeographyWindow();
+    }
     if (m_showControls) {
         drawControlsWindow();
     }
@@ -121,6 +124,9 @@ float App::drawMainMenu() {
         if (ImGui::MenuItem(
                 withIcon(ICON_FA_WAND_MAGIC_SPARKLES, m_text(TextId::MenuGenerate)).c_str())) {
             m_showGenerator = true;
+        }
+        if (ImGui::MenuItem(withIcon(ICON_FA_GLOBE, m_text(TextId::MenuGeography)).c_str())) {
+            m_showGeography = true;
         }
         if (ImGui::MenuItem(withIcon(ICON_FA_IMAGE, m_text(TextId::MenuExportPng)).c_str())) {
             exportPng();
@@ -316,6 +322,10 @@ float App::drawPropertiesPanel(float top) {
                 {-FLT_MIN, 0.0f})) {
             m_showGenerator = true;
         }
+        if (ImGui::Button(withIcon(ICON_FA_GLOBE, m_text(TextId::MenuGeography)).c_str(),
+                          {-FLT_MIN, 0.0f})) {
+            m_showGeography = true;
+        }
     }
     ImGui::End();
     return left;
@@ -414,6 +424,33 @@ void App::drawGeneratorWindow() {
 
     if (generateClicked || (settingsChanged && !m_hasManualEdits)) {
         regenerate();
+    }
+    ImGui::End();
+}
+
+void App::drawGeographyWindow() {
+    ImGui::SetNextWindowPos(
+        {0.5f * static_cast<float>(GetScreenWidth()), 0.5f * static_cast<float>(GetScreenHeight())},
+        ImGuiCond_FirstUseEver, {0.5f, 0.5f});
+    const float width = kGeneratorWidth * uiScale();
+    ImGui::SetNextWindowSizeConstraints({width, 0.0f}, {width, FLT_MAX});
+    if (!ImGui::Begin(withId(m_text(TextId::WindowGeography), "geography").c_str(),
+                      &m_showGeography,
+                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse)) {
+        ImGui::End();
+        return;
+    }
+
+    if (ImGui::CollapsingHeader(withId(m_text(TextId::SectionErosion), "erosion").c_str(),
+                                ImGuiTreeNodeFlags_DefaultOpen)) {
+        labelAbove(m_text(TextId::ErosionDroplets));
+        ImGui::SliderInt("##droplets", &m_erosionDroplets, 10'000, 500'000, "%d",
+                         ImGuiSliderFlags_Logarithmic);
+        ImGui::SetItemTooltip("%s", m_text(TextId::ErosionDropletsTooltip));
+        if (ImGui::Button(withIcon(ICON_FA_CLOUD_RAIN, m_text(TextId::Erode)).c_str(),
+                          {-FLT_MIN, 0.0f})) {
+            runErosion();
+        }
     }
     ImGui::End();
 }

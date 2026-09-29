@@ -14,6 +14,7 @@ enum class TextId {
     // Main menu
     MenuFile,
     MenuGenerate,
+    MenuGeography,
     MenuExportPng,
     MenuExit,
     MenuView,
@@ -70,6 +71,13 @@ enum class TextId {
     Generate,
     GenerateDiscardEdits,
 
+    // Geography window
+    WindowGeography,
+    SectionErosion,
+    ErosionDroplets,
+    ErosionDropletsTooltip,
+    Erode,
+
     // Status bar
     StatusCell,
     StatusHeight,
@@ -83,6 +91,7 @@ enum class TextId {
     SaveFailed,
     ExportTooMany,
     ManualEditsReplaced,
+    ErosionDone,  // "{}" = number of drops, second "{}" = milliseconds
 
     // Controls help
     HelpPaint,

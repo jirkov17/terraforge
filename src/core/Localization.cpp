@@ -21,6 +21,7 @@ constexpr auto kTranslations = std::to_array<Translation>({
     // Main menu
     {TextId::MenuFile, "File", "Файл"},
     {TextId::MenuGenerate, "Generate terrain...", "Генерация рельефа..."},
+    {TextId::MenuGeography, "Geography...", "География..."},
     {TextId::MenuExportPng, "Export PNG", "Экспорт в PNG"},
     {TextId::MenuExit, "Exit", "Выход"},
     {TextId::MenuView, "View", "Вид"},
@@ -85,6 +86,14 @@ constexpr auto kTranslations = std::to_array<Translation>({
     {TextId::Generate, "Generate", "Сгенерировать"},
     {TextId::GenerateDiscardEdits, "Generate (discard edits)", "Сгенерировать (сбросить правки)"},
 
+    // Geography window
+    {TextId::WindowGeography, "Geography", "География"},
+    {TextId::SectionErosion, "Erosion", "Эрозия"},
+    {TextId::ErosionDroplets, "Raindrops", "Капли дождя"},
+    {TextId::ErosionDropletsTooltip, "Each drop washes soil downhill. More drops = deeper valleys.",
+     "Каждая капля смывает грунт вниз по склону. Больше капель — глубже долины."},
+    {TextId::Erode, "Erode the terrain", "Размыть рельеф"},
+
     // Status bar
     {TextId::StatusCell, "Cell", "Клетка"},
     {TextId::StatusHeight, "height", "высота"},
@@ -100,6 +109,7 @@ constexpr auto kTranslations = std::to_array<Translation>({
      "Слишком много экспортированных карт, почистите папку"},
     {TextId::ManualEditsReplaced, "Hand edits of the relief were replaced by the new shape",
      "Ручные правки рельефа заменены новой формой"},
+    {TextId::ErosionDone, "Erosion: {} drops in {} ms", "Эрозия: {} капель за {} мс"},
 
     // Controls help
     {TextId::HelpPaint, "LMB: paint with the brush", "ЛКМ: рисовать кистью"},

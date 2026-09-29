@@ -3,6 +3,7 @@ add_executable(terraforge_tests
     Benchmarks.cpp
     BrushTests.cpp
     ContinentShapeTests.cpp
+    ErosionTests.cpp
     HeightmapTests.cpp
     LocalizationTests.cpp
     MapColorizerTests.cpp

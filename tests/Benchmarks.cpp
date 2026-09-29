@@ -3,6 +3,7 @@
 //   terraforge_tests --gtest_also_run_disabled_tests --gtest_filter=Benchmark.*
 
 #include "core/ContinentShape.hpp"
+#include "core/Erosion.hpp"
 #include "core/Heightmap.hpp"
 #include "core/TerrainGenerator.hpp"
 
@@ -40,4 +41,11 @@ TEST(Benchmark, DISABLED_TerrainGeneration) {
     measure("makeShapeMask", [&] { tf::makeShapeMask(shape, settings.shape, settings.seed); });
     measure("combineTerrain (per frame)",
             [&] { tf::combineTerrain(map, noise, shape, settings.shapeStrength); });
+}
+
+TEST(Benchmark, DISABLED_Erosion) {
+    Heightmap map(kMapSize, kMapSize);
+    tf::generateTerrain(map, GeneratorSettings{});
+    const tf::ErosionSettings settings;
+    measure("erode (70k drops)", [&] { tf::erode(map, settings); });
 }
