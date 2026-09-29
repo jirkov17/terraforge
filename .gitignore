@@ -12,6 +12,7 @@ CMakeUserPresets.json
 
 # Runtime files created by the app
 imgui.ini
+terraforge.ini
 terraforge_map_*.png
 
 # Personal Claude Code settings (shared settings live in .claude/settings.json)

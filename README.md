@@ -13,10 +13,12 @@
 - Кисти: поднять, опустить, сгладить, выровнять; мягкий край, скорость не зависит от FPS
 - Уровень моря, отмывка рельефа (освещение с северо-запада, как на бумажных картах), береговая линия
 - Зум к курсору, перемещение карты, экспорт в PNG
+- Интерфейс на английском и русском (меню «Language / Язык»), выбор сохраняется между запусками;
+  полнота переводов проверяется при компиляции (`consteval`)
 - Ядро без зависимостей от графики, покрыто юнит-тестами (GoogleTest), CI на Windows и Linux
 
-Что будет дальше — 3D-просмотр, undo/redo, проекты в SQLite, города и подписи,
-генерация лора нейросетью — в [ROADMAP.md](ROADMAP.md).
+Что будет дальше — миры в SQLite и стартовое меню, форма континента, 3D-просмотр, undo/redo,
+города и королевства, генерация лора нейросетью — в [ROADMAP.md](ROADMAP.md).
 
 ## Сборка
 
@@ -67,12 +69,17 @@ ctest --test-dir build
 | Размер кисти | Ctrl + колесо или `[` / `]` |
 | Инструменты | `1` поднять, `2` опустить, `3` сгладить, `4` выровнять |
 | Вписать карту в окно | `F` |
+| Генерация рельефа | меню «Файл» или кнопка внизу панели «Свойства» |
+| Язык интерфейса | меню «Language / Язык» |
 
 ## Устройство проекта
 
 ```
-src/core/    данные и алгоритмы (без графики): Heightmap, TerrainGenerator, Brush, MapColorizer
-src/app/     окно, ввод, рендер и интерфейс: App, MapRenderer, Window
+src/core/    данные и алгоритмы (без графики): Heightmap, TerrainGenerator, Brush, MapColorizer,
+             Localization (переводы EN/RU), AppSettings (terraforge.ini)
+src/app/     окно, ввод, рендер и интерфейс: App (цикл и ввод), AppUi (меню и панели),
+             MapRenderer, Window
+assets/      файлы, которые копируются рядом с .exe: шрифт интерфейса
 tests/       юнит-тесты ядра (GoogleTest)
 cmake/       подключение зависимостей и флаги предупреждений
 ```
@@ -87,4 +94,6 @@ C++20 · CMake · [raylib](https://www.raylib.com) · [Dear ImGui](https://githu
 · [GoogleTest](https://github.com/google/googletest) · GitHub Actions
 
 Библиотеки скачиваются при сборке и распространяются под своими лицензиями
-(zlib, MIT, BSD-3-Clause).
+(zlib, MIT, BSD-3-Clause). Шрифт интерфейса — [Noto Sans](https://notofonts.github.io)
+под лицензией SIL Open Font License 1.1 ([assets/fonts/OFL.txt](assets/fonts/OFL.txt)),
+иконки — Font Awesome Free (входит в rlImGui).

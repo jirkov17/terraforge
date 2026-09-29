@@ -1,7 +1,9 @@
 # Core: terrain data and algorithms. Pure C++ without graphics, so it is easy to unit test.
 add_library(terraforge_core STATIC
+    core/AppSettings.cpp
     core/Brush.cpp
     core/Heightmap.cpp
+    core/Localization.cpp
     core/MapColorizer.cpp
     core/TerrainGenerator.cpp)
 target_include_directories(terraforge_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -11,6 +13,7 @@ terraforge_set_warnings(terraforge_core)
 # App: window, rendering and UI on top of the core.
 add_executable(terraforge
     app/App.cpp
+    app/AppUi.cpp
     app/MapRenderer.cpp
     app/Window.cpp
     app/main.cpp)
@@ -20,3 +23,9 @@ terraforge_set_warnings(terraforge)
 # Visual Studio: run the app from the folder with the .exe (exported PNGs land there).
 set_target_properties(terraforge PROPERTIES
     VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:terraforge>")
+
+# Fonts and other runtime files: the app looks for them next to the .exe.
+add_custom_command(TARGET terraforge POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${PROJECT_SOURCE_DIR}/assets $<TARGET_FILE_DIR:terraforge>/assets
+    COMMENT "Copying assets next to terraforge")

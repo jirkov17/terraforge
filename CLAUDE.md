@@ -38,10 +38,16 @@ build/bin/Release/terraforge.exe                     # запуск
   - `TerrainGenerator` — fBm-шум (FastNoiseLite) + маска острова; детерминирован по seed.
   - `Brush` — кисти Raise / Lower / Smooth / Flatten; скорость не зависит от FPS (`dt`).
   - `MapColorizer` — высоты в цвета: глубина или высота над морем, отмывка рельефа, берег.
+  - `Localization` — тексты UI на EN/RU: `TextId` + таблица, полнота проверяется `consteval`.
+    Новый текст в UI — новая строка таблицы, никаких строковых литералов прямо в ImGui.
+  - `AppSettings` — настройки приложения (язык) в `terraforge.ini` рядом с `.exe`.
 - `src/app/` — окно, ввод, рендер и UI (raylib + Dear ImGui через rlImGui).
   - `App` — главный цикл: ввод → обновление → отрисовка. Порядок полей важен:
     `Window` создаётся первым, потому что текстуры живут только при открытом окне.
-  - `MapRenderer` — пиксели на CPU → текстура на GPU. `Window`, `ImGuiLayer` — RAII-обёртки.
+  - `AppUi.cpp` — меню, панели и окна (методы `App`). Метки ImGui — `"текст###id"`,
+    чтобы смена языка не сбрасывала состояние окон.
+  - `MapRenderer` — пиксели на CPU → текстура на GPU. `Window`, `ImGuiLayer` — RAII-обёртки;
+    `ImGuiLayer` грузит шрифт с кириллицей из `assets/fonts` (копируется рядом с `.exe`).
 - Уровень моря — настройка отображения (`ColorizeSettings`), а не часть данных карты.
 - Зависимости подключаются через CMake FetchContent в `cmake/Dependencies.cmake`.
 
