@@ -46,6 +46,18 @@ TEST(Localization, MessagesWithAFileNameFormatInEveryLanguage) {
     }
 }
 
+TEST(Localization, ErosionMessageFormatsInEveryLanguage) {
+    // make_format_args takes lvalues only: it stores references, which must not dangle.
+    const int drops = 150'000;
+    const int milliseconds = 250;
+    for (const Language language : kLanguages) {
+        const std::string message = std::vformat(tf::translate(TextId::ErosionDone, language),
+                                                 std::make_format_args(drops, milliseconds));
+        EXPECT_NE(message.find("150000"), std::string::npos) << message;
+        EXPECT_NE(message.find("250"), std::string::npos) << message;
+    }
+}
+
 TEST(Localization, LanguageNamesAreNative) {
     EXPECT_EQ(tf::languageName(Language::English), "English");
     EXPECT_EQ(tf::languageName(Language::Russian), "Русский");

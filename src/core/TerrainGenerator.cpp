@@ -6,51 +6,66 @@
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
 namespace tf {
 
 namespace {
 
-// 0 in the center of the map, 1 on its edges.
-// "Square bump" from https://www.redblobgames.com/maps/terrain-from-noise/
-float edgeDistance(float nx, float ny) {
-    return 1.0f - (1.0f - nx * nx) * (1.0f - ny * ny);
+constexpr int kShapeBlurDivisor = 64;  // blur radius = map size / 64 (8 cells for 512)
+
+bool sameSize(const Heightmap& a, const Heightmap& b) noexcept {
+    return a.width() == b.width() && a.height() == b.height();
 }
 
 }  // namespace
 
-void generateTerrain(Heightmap& map, const GeneratorSettings& settings) {
+void generateNoise(Heightmap& noise, const GeneratorSettings& settings) {
     // Fractal Brownian motion: several layers of OpenSimplex noise, each finer and weaker.
-    FastNoiseLite noise(settings.seed);
-    noise.SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2);
-    noise.SetFractalType(FastNoiseLite::FractalType_FBm);
-    noise.SetFractalOctaves(std::max(1, settings.octaves));
-    noise.SetFractalLacunarity(settings.lacunarity);
-    noise.SetFractalGain(settings.gain);
-    noise.SetFrequency(settings.frequency);
+    FastNoiseLite fbm(settings.seed);
+    fbm.SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2);
+    fbm.SetFractalType(FastNoiseLite::FractalType_FBm);
+    fbm.SetFractalOctaves(std::max(1, settings.octaves));
+    fbm.SetFractalLacunarity(settings.lacunarity);
+    fbm.SetFractalGain(settings.gain);
+    fbm.SetFrequency(settings.frequency);
 
-    const float width = static_cast<float>(map.width());
-    const float height = static_cast<float>(map.height());
-    const float scale = 1.0f / std::max(width, height);  // same look at any map resolution
-
-    for (int y = 0; y < map.height(); ++y) {
-        for (int x = 0; x < map.width(); ++x) {
-            const float fx = static_cast<float>(x);
-            const float fy = static_cast<float>(y);
-
-            // GetNoise returns roughly [-1, 1]; move it to [0, 1].
-            const float elevation = 0.5f * (noise.GetNoise(fx * scale, fy * scale) + 1.0f);
-
-            // Push the edges of the map down so that the land is surrounded by the sea.
-            const float nx = 2.0f * (fx + 0.5f) / width - 1.0f;
-            const float ny = 2.0f * (fy + 0.5f) / height - 1.0f;
-            const float island = 1.0f - edgeDistance(nx, ny);
-
-            map.at(x, y) = std::lerp(elevation, island, settings.islandStrength);
+    const float scale = 1.0f / static_cast<float>(std::max(noise.width(), noise.height()));
+    for (int y = 0; y < noise.height(); ++y) {
+        for (int x = 0; x < noise.width(); ++x) {
+            // Same look at any map resolution: sample in [0, 1] map coordinates.
+            noise.at(x, y) =
+                fbm.GetNoise(static_cast<float>(x) * scale, static_cast<float>(y) * scale);
         }
     }
+    noise.normalize();
+}
 
-    map.normalize();
+void combineTerrain(Heightmap& map, const Heightmap& noise, const Heightmap& shape,
+                    float shapeStrength) {
+    if (!sameSize(map, noise) || !sameSize(map, shape)) {
+        throw std::invalid_argument("combineTerrain: all grids must have the same size");
+    }
+    Heightmap blurred = shape;
+    blurField(blurred, std::max(1, std::max(map.width(), map.height()) / kShapeBlurDivisor));
+
+    const float strength = std::clamp(shapeStrength, 0.0f, 1.0f);
+    const auto noiseValues = noise.values();
+    const auto shapeValues = blurred.values();
+    const auto mapValues = map.values();
+    for (std::size_t i = 0; i < mapValues.size(); ++i) {
+        // No normalize() afterwards: stretching would turn a painted empty ocean back into land.
+        // lerp of two values in [0, 1] already stays in [0, 1].
+        mapValues[i] = std::lerp(noiseValues[i], shapeValues[i], strength);
+    }
+}
+
+void generateTerrain(Heightmap& map, const GeneratorSettings& settings) {
+    Heightmap noise(map.width(), map.height());
+    Heightmap shape(map.width(), map.height());
+    generateNoise(noise, settings);
+    makeShapeMask(shape, settings.shape, settings.seed);
+    combineTerrain(map, noise, shape, settings.shapeStrength);
 }
 
 }  // namespace tf

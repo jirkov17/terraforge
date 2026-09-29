@@ -2,9 +2,15 @@
 add_library(terraforge_core STATIC
     core/AppSettings.cpp
     core/Brush.cpp
+    core/Climate.cpp
+    core/ContinentShape.cpp
+    core/Erosion.cpp
+    core/Geography.cpp
     core/Heightmap.cpp
+    core/Hydrology.cpp
     core/Localization.cpp
     core/MapColorizer.cpp
+    core/MountainPasses.cpp
     core/TerrainGenerator.cpp)
 target_include_directories(terraforge_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(terraforge_core PRIVATE fastnoiselite)

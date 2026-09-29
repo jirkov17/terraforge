@@ -35,9 +35,18 @@ build/bin/Release/terraforge.exe                     # запуск
 - `src/core/` — данные и алгоритмы на чистом C++20, без raylib и ImGui. Покрыты тестами
   в `tests/` (GoogleTest). Новая логика в core — новый тест.
   - `Heightmap` — сетка высот в [0, 1], хранится по строкам (`index = y * width + x`).
-  - `TerrainGenerator` — fBm-шум (FastNoiseLite) + маска острова; детерминирован по seed.
+  - `TerrainGenerator` — два шага: `generateNoise` (fBm, медленно, кэшируется в `App`) и
+    `combineTerrain` (шум + размытая маска формы, ~6 мс — можно каждый кадр); детерминирован по seed.
+  - `ContinentShape` — заготовки маски формы (континент, архипелаг, …); `blurField` в `Heightmap`.
   - `Brush` — кисти Raise / Lower / Smooth / Flatten; скорость не зависит от FPS (`dt`).
-  - `MapColorizer` — высоты в цвета: глубина или высота над морем, отмывка рельефа, берег.
+    Кисти «Суша» / «Море» в `app/BrushTools.hpp` — это Raise / Lower по маске формы.
+  - `Erosion` — капельная эрозия (Beyer 2015); ГСЧ — биты `mt19937`, не `uniform_real_distribution`
+    (иначе разные карты на MSVC и libstdc++).
+  - `Geography` — всё, что выводится из высот: `Hydrology` (Priority-Flood → озёра, сток → реки),
+    `Climate` (температура, влажность, биомы), `MountainPasses` (дерево слияний, union-find).
+    Пересчитывается после завершения мазка / генерации / эрозии (~90 мс), не каждый кадр.
+  - `MapColorizer` — высоты в цвета: рельеф или биомы, отмывка, берег, озёра и реки.
+  - Замеры скорости и статистика карты: `tests/Benchmarks.cpp` (тесты `DISABLED_`, не в ctest).
   - `Localization` — тексты UI на EN/RU: `TextId` + таблица, полнота проверяется `consteval`.
     Новый текст в UI — новая строка таблицы, никаких строковых литералов прямо в ImGui.
   - `AppSettings` — настройки приложения (язык) в `terraforge.ini` рядом с `.exe`.

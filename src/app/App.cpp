@@ -6,7 +6,10 @@
 #include <raymath.h>
 #include <rlImGui.h>
 
+#include "core/Erosion.hpp"
+
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <format>
@@ -22,6 +25,8 @@ constexpr int kWindowHeight = 800;
 constexpr float kMargin = 10.0f;
 constexpr float kMinZoom = 0.25f;
 constexpr float kMaxZoom = 32.0f;
+// Land / Sea turn sea into land (mask 0 -> 1) in about a third of a second at the brush center.
+constexpr float kShapeBrushStrength = 3.0f;
 
 constexpr Color kBackgroundColor{28, 32, 38, 255};
 constexpr const char* kSettingsFile = "terraforge.ini";
@@ -39,6 +44,8 @@ bool isControlDown() {
 App::App()
     : m_window(kWindowWidth, kWindowHeight, "Terraforge"),
       m_map(kMapSize, kMapSize),
+      m_noise(kMapSize, kMapSize),
+      m_shapeMask(kMapSize, kMapSize),
       m_renderer(kMapSize, kMapSize),
       m_settingsPath(std::filesystem::path(GetApplicationDirectory()) / kSettingsFile),
       m_settings(loadSettings(m_settingsPath)),
@@ -55,8 +62,14 @@ void App::run() {
     while (!WindowShouldClose() && !m_quitRequested) {
         handleInput(GetFrameTime());
 
+        // Rivers and lakes take tens of milliseconds: recompute them once a stroke is finished,
+        // not in every frame of it.
+        if (m_geographyDirty && !IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+            updateGeography();
+        }
         if (m_needsRecolor) {
-            m_renderer.update(m_map, m_colors);
+            // Outdated rivers would float over the new terrain: leave them out until updated.
+            m_renderer.update(m_map, m_colors, m_geographyDirty ? nullptr : &m_geography);
             m_needsRecolor = false;
         }
 
@@ -65,6 +78,7 @@ void App::run() {
 
         BeginMode2D(m_camera);
         m_renderer.draw();
+        drawMountainPasses();
         drawBrushCursor();
         EndMode2D();
 
@@ -123,7 +137,7 @@ void App::handleCameraInput() {
 void App::handleShortcuts() {
     for (std::size_t i = 0; i < kTools.size(); ++i) {
         if (IsKeyPressed(KEY_ONE + static_cast<int>(i))) {
-            m_brush.tool = kTools[i];
+            m_tool = kTools[i];
         }
     }
     if (IsKeyPressed(KEY_LEFT_BRACKET)) {
@@ -135,6 +149,10 @@ void App::handleShortcuts() {
     if (IsKeyPressed(KEY_F)) {
         fitMapToScreen();
     }
+    if (IsKeyPressed(KEY_M)) {  // relief map <-> biome map
+        m_colors.mode = m_colors.mode == MapMode::Relief ? MapMode::Biomes : MapMode::Relief;
+        m_needsRecolor = true;
+    }
 }
 
 void App::paint(float dt) {
@@ -142,14 +160,22 @@ void App::paint(float dt) {
         return;
     }
     const Vector2 cell = mouseCell();
+    const Tool tool = isShiftDown() ? oppositeTool(m_tool) : m_tool;  // Shift: Raise <-> Lower
 
     BrushSettings brush = m_brush;
-    if (isShiftDown()) {  // Shift swaps Raise and Lower
-        if (brush.tool == BrushTool::Raise) {
-            brush.tool = BrushTool::Lower;
-        } else if (brush.tool == BrushTool::Lower) {
-            brush.tool = BrushTool::Raise;
+    brush.tool = brushToolFor(tool);
+
+    if (isShapeTool(tool)) {
+        // Land / Sea paint the shape mask, then the whole terrain is rebuilt from it.
+        brush.strength = kShapeBrushStrength;
+        if (applyBrush(m_shapeMask, brush, cell.x, cell.y, dt)) {
+            if (m_hasManualEdits) {
+                m_statusMessage = m_text(TextId::ManualEditsReplaced);
+            }
+            m_shapeIsPainted = true;
+            rebuildTerrain();
         }
+        return;
     }
 
     // Flatten levels the terrain to the height where the stroke started.
@@ -163,7 +189,7 @@ void App::paint(float dt) {
     }
 
     if (applyBrush(m_map, brush, cell.x, cell.y, dt)) {
-        m_needsRecolor = true;
+        terrainChanged();
         m_hasManualEdits = true;
     }
 }
@@ -178,9 +204,55 @@ Vector2 App::mouseCell() const {
 // ---------------------------------------------------------------------------------------
 
 void App::regenerate() {
-    generateTerrain(m_map, m_generator);
-    m_needsRecolor = true;
+    generateNoise(m_noise, m_generator);
+    if (!m_shapeIsPainted) {
+        // Preset outlines depend on the seed too; a hand-drawn shape is kept as it is.
+        makeShapeMask(m_shapeMask, m_generator.shape, m_generator.seed);
+    }
+    rebuildTerrain();
+}
+
+void App::rebuildTerrain() {
+    combineTerrain(m_map, m_noise, m_shapeMask, m_generator.shapeStrength);
+    terrainChanged();
     m_hasManualEdits = false;
+}
+
+void App::applyShapePreset(ShapePreset preset) {
+    m_generator.shape = preset;
+    makeShapeMask(m_shapeMask, preset, m_generator.seed);
+    m_shapeIsPainted = false;
+    rebuildTerrain();
+}
+
+void App::runErosion() {
+    ErosionSettings settings;
+    settings.droplets = m_erosionDroplets;
+    settings.seed = m_generator.seed + m_erosionRuns++;
+    settings.seaLevel = m_colors.seaLevel;
+
+    const auto start = std::chrono::steady_clock::now();
+    erode(m_map, settings);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start);
+
+    terrainChanged();
+    m_hasManualEdits = true;  // regenerating would throw the erosion away
+    const long long milliseconds = elapsed.count();
+    m_statusMessage = std::vformat(m_text(TextId::ErosionDone),
+                                   std::make_format_args(m_erosionDroplets, milliseconds));
+}
+
+void App::terrainChanged() {
+    m_needsRecolor = true;
+    m_geographyDirty = true;
+}
+
+void App::updateGeography() {
+    m_geographySettings.seaLevel = m_colors.seaLevel;
+    m_geography = analyzeGeography(m_map, m_geographySettings);
+    m_geographyDirty = false;
+    m_needsRecolor = true;
 }
 
 void App::fitMapToScreen() {
@@ -192,7 +264,7 @@ void App::fitMapToScreen() {
 
     m_camera.zoom = std::clamp(std::min(availableWidth / mapWidth, availableHeight / mapHeight),
                                kMinZoom, kMaxZoom);
-    m_camera.target = {mapWidth / 2.0f, mapHeight / 2.0f};  // look at the center of the map...
+    m_camera.target = {mapWidth / 2.0f, mapHeight / 2.0f};    // look at the center of the map...
     m_camera.offset = {m_mapArea.x + m_mapArea.width / 2.0f,  // ...placed in the center of the area
                        m_mapArea.y + m_mapArea.height / 2.0f};
     m_camera.rotation = 0.0f;
@@ -208,7 +280,8 @@ void App::exportPng() {
         const std::string name = path.string();
         // The message comes from the translation table, so the format string is known only at
         // run time: std::vformat instead of std::format (which checks it at compile time).
-        const TextId message = m_renderer.exportPng(name) ? TextId::ExportSaved : TextId::SaveFailed;
+        const TextId message =
+            m_renderer.exportPng(name) ? TextId::ExportSaved : TextId::SaveFailed;
         m_statusMessage = std::vformat(m_text(message), std::make_format_args(name));
         return;
     }

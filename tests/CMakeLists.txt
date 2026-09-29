@@ -1,9 +1,15 @@
 add_executable(terraforge_tests
     AppSettingsTests.cpp
+    Benchmarks.cpp
     BrushTests.cpp
+    ClimateTests.cpp
+    ContinentShapeTests.cpp
+    ErosionTests.cpp
     HeightmapTests.cpp
+    HydrologyTests.cpp
     LocalizationTests.cpp
     MapColorizerTests.cpp
+    MountainPassesTests.cpp
     TerrainGeneratorTests.cpp)
 target_link_libraries(terraforge_tests PRIVATE terraforge_core GTest::gtest_main)
 terraforge_set_warnings(terraforge_tests)

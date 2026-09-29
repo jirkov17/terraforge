@@ -57,4 +57,64 @@ std::size_t Heightmap::indexOf(int x, int y) const noexcept {
            static_cast<std::size_t>(x);
 }
 
+namespace {
+
+// out[i] = average of in[i - radius .. i + radius], indices clamped to the line.
+// The window sum is updated by adding the value that enters and removing the one that leaves.
+void boxBlurLine(std::span<const float> in, std::span<float> out, int radius) {
+    const int n = static_cast<int>(in.size());
+    const auto sample = [&](int i) {
+        return in[static_cast<std::size_t>(std::clamp(i, 0, n - 1))];
+    };
+
+    float sum = 0.0f;
+    for (int i = -radius; i <= radius; ++i) {
+        sum += sample(i);
+    }
+    const float scale = 1.0f / static_cast<float>(2 * radius + 1);
+    for (int i = 0; i < n; ++i) {
+        out[static_cast<std::size_t>(i)] = sum * scale;
+        sum += sample(i + radius + 1) - sample(i - radius);
+    }
+}
+
+}  // namespace
+
+void blurField(Heightmap& field, int radius) {
+    if (radius <= 0) {
+        return;
+    }
+    const int width = field.width();
+    const int height = field.height();
+    const auto longest = static_cast<std::size_t>(std::max(width, height));
+    std::vector<float> in(longest);
+    std::vector<float> out(longest);
+    const std::span<const float> inRow(in.data(), static_cast<std::size_t>(width));
+    const std::span<float> outRow(out.data(), static_cast<std::size_t>(width));
+    const std::span<const float> inColumn(in.data(), static_cast<std::size_t>(height));
+    const std::span<float> outColumn(out.data(), static_cast<std::size_t>(height));
+
+    // A blur along x and then along y equals a 2D box blur (the box filter is separable).
+    for (int pass = 0; pass < 3; ++pass) {
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                in[static_cast<std::size_t>(x)] = field.at(x, y);
+            }
+            boxBlurLine(inRow, outRow, radius);
+            for (int x = 0; x < width; ++x) {
+                field.at(x, y) = out[static_cast<std::size_t>(x)];
+            }
+        }
+        for (int x = 0; x < width; ++x) {
+            for (int y = 0; y < height; ++y) {
+                in[static_cast<std::size_t>(y)] = field.at(x, y);
+            }
+            boxBlurLine(inColumn, outColumn, radius);
+            for (int y = 0; y < height; ++y) {
+                field.at(x, y) = out[static_cast<std::size_t>(y)];
+            }
+        }
+    }
+}
+
 }  // namespace tf

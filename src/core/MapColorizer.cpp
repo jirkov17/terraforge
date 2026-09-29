@@ -1,5 +1,6 @@
 #include "core/MapColorizer.hpp"
 
+#include "core/Geography.hpp"
 #include "core/Heightmap.hpp"
 
 #include <algorithm>
@@ -35,6 +36,15 @@ constexpr std::array kLandStops{
 };
 
 constexpr Rgba8 kCoastlineColor{44, 62, 80, 255};
+
+// Lake depth -> fresh water color: a little greener and lighter than the sea.
+constexpr std::array kLakeStops{
+    ColorStop{0.00f, {126, 182, 206, 255}},
+    ColorStop{0.05f, {72, 132, 178, 255}},
+};
+constexpr Rgba8 kRiverColor{58, 116, 186, 255};
+
+constexpr float kBeachWidth = 0.012f;  // altitude where the beach ends (the meadows stop above)
 
 std::uint8_t toByte(float value) {
     // +0.5 rounds to the nearest integer (std::lround is noticeably slower in a hot loop).
@@ -85,6 +95,11 @@ Rgba8 brighten(Rgba8 color, float factor) {
             toByte(channel(color.b) * factor), 255};
 }
 
+// How strongly a river cell is painted: faint where it starts, solid four times downstream.
+float riverOpacity(float flow, float threshold) {
+    return std::clamp(0.45f + 0.25f * std::log2(flow / threshold), 0.45f, 1.0f);
+}
+
 bool touchesLand(const Heightmap& map, int x, int y, float seaLevel) {
     return map.atClamped(x - 1, y) >= seaLevel || map.atClamped(x + 1, y) >= seaLevel ||
            map.atClamped(x, y - 1) >= seaLevel || map.atClamped(x, y + 1) >= seaLevel;
@@ -99,7 +114,34 @@ Rgba8 terrainColor(float height, float seaLevel) noexcept {
     return sampleGradient(kLandStops, height - seaLevel);
 }
 
-void colorize(const Heightmap& map, const ColorizeSettings& settings, std::span<Rgba8> pixels) {
+Rgba8 biomeColor(Biome biome) noexcept {
+    switch (biome) {
+        case Biome::Sea:
+            return kWaterStops[1].color;
+        case Biome::Glacier:
+            return {236, 240, 244, 255};
+        case Biome::Tundra:
+            return {178, 182, 156, 255};
+        case Biome::Taiga:
+            return {82, 118, 94, 255};
+        case Biome::Forest:
+            return {90, 140, 74, 255};
+        case Biome::Meadow:
+            return {158, 190, 108, 255};
+        case Biome::Steppe:
+            return {204, 194, 128, 255};
+        case Biome::Desert:
+            return {232, 210, 152, 255};
+        case Biome::Swamp:
+            return {102, 120, 82, 255};
+        case Biome::Mountains:
+            return {140, 128, 116, 255};
+    }
+    return {255, 0, 255, 255};  // magenta: a biome without a color is easy to spot
+}
+
+void colorize(const Heightmap& map, const ColorizeSettings& settings, std::span<Rgba8> pixels,
+              const Geography* geography) {
     const int width = map.width();
     const int height = map.height();
     if (pixels.size() != static_cast<std::size_t>(width) * static_cast<std::size_t>(height)) {
@@ -109,12 +151,20 @@ void colorize(const Heightmap& map, const ColorizeSettings& settings, std::span<
     // Heights are tiny compared to the map size (0..1 vs 512 cells), so slopes are
     // exaggerated for shading. Scaling with the map size keeps the look resolution-independent.
     const float reliefScale = 0.1f * static_cast<float>(std::max(width, height));
+    const Hydrology* water =
+        settings.rivers && geography != nullptr ? &geography->hydrology : nullptr;
+    const Climate* climate =
+        settings.mode == MapMode::Biomes && geography != nullptr ? &geography->climate : nullptr;
 
     std::size_t i = 0;
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x, ++i) {
             const float h = map.at(x, y);
             Rgba8 color = terrainColor(h, settings.seaLevel);
+            // The biome map keeps the sea and the beaches of the relief map.
+            if (climate != nullptr && h >= settings.seaLevel + kBeachWidth) {
+                color = biomeColor(climate->biome[i]);
+            }
 
             if (h < settings.seaLevel) {
                 if (settings.coastline && touchesLand(map, x, y, settings.seaLevel)) {
@@ -126,6 +176,17 @@ void colorize(const Heightmap& map, const ColorizeSettings& settings, std::span<
                 const float dzdy = 0.5f * (map.atClamped(x, y + 1) - map.atClamped(x, y - 1));
                 color = brighten(color, hillshadeFactor(dzdx * reliefScale, dzdy * reliefScale,
                                                         settings.hillshadeStrength));
+            }
+
+            // Fresh water on top of the land: flat lakes, rivers blended over the shaded ground.
+            if (water != nullptr && h >= settings.seaLevel) {
+                if (water->isLake(i, h)) {
+                    color = sampleGradient(kLakeStops, water->lakeDepth(i, h));
+                } else if (water->isRiver(i, h)) {
+                    const float opacity =
+                        riverOpacity(water->flow[i], water->settings.riverThreshold);
+                    color = mix(color, kRiverColor, opacity);
+                }
             }
 
             pixels[i] = color;

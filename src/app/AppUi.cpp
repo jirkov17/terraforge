@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <cstdlib>
 #include <format>
 #include <initializer_list>
 #include <string>
@@ -22,12 +23,11 @@ namespace {
 constexpr float kMargin = 8.0f;             // gap between the UI panels and the screen edges
 constexpr float kPropertiesWidth = 280.0f;  // at 100% display scaling
 constexpr float kGeneratorWidth = 320.0f;
-constexpr float kToolIconScale = 1.5f;      // toolbar icons relative to the text size
+constexpr float kToolIconScale = 1.5f;  // toolbar icons relative to the text size
 
-constexpr ImGuiWindowFlags kFixedPanelFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
-                                              ImGuiWindowFlags_NoCollapse |
-                                              ImGuiWindowFlags_NoSavedSettings |
-                                              ImGuiWindowFlags_AlwaysAutoResize;
+constexpr ImGuiWindowFlags kFixedPanelFlags =
+    ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
+    ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize;
 
 constexpr const char* kMissingFontWarning =
     "Font assets/fonts/NotoSans-Regular.ttf not found: Russian is unavailable";
@@ -60,6 +60,32 @@ void labelAbove(const char* text) {
     ImGui::SetNextItemWidth(-FLT_MIN);
 }
 
+constexpr TextId shapeName(ShapePreset preset) noexcept {
+    switch (preset) {
+        case ShapePreset::Continent:
+            return TextId::ShapeContinent;
+        case ShapePreset::Archipelago:
+            return TextId::ShapeArchipelago;
+        case ShapePreset::TwoContinents:
+            return TextId::ShapeTwoContinents;
+        case ShapePreset::InlandSea:
+            return TextId::ShapeInlandSea;
+        case ShapePreset::Ocean:
+            return TextId::ShapeOcean;
+    }
+    return TextId::ShapeContinent;
+}
+
+// The biome texts follow the Biome enum order, so the name is found by offset. The assert
+// breaks the build if someone adds a biome without adding its text in the same place.
+static_assert(static_cast<int>(TextId::BiomeMountains) - static_cast<int>(TextId::BiomeSea) ==
+                  static_cast<int>(Biome::Mountains) - static_cast<int>(Biome::Sea),
+              "Biome texts must follow the Biome enum");
+
+constexpr TextId biomeName(Biome biome) noexcept {
+    return static_cast<TextId>(static_cast<int>(TextId::BiomeSea) + static_cast<int>(biome));
+}
+
 }  // namespace
 
 void App::drawBrushCursor() const {
@@ -68,13 +94,32 @@ void App::drawBrushCursor() const {
     }
     const Vector2 center = mouseCell();
     const float pixel = 1.0f / m_camera.zoom;  // one screen pixel in world units
-    const Color color = toolColor(m_brush.tool);
+    const Color color = toolColor(m_tool);
 
     const float outer = m_brush.radius;
     const float inner = 0.5f * m_brush.radius;  // where the brush is at about half strength
     DrawRing(center, std::max(0.0f, outer - 1.5f * pixel), outer, 0.0f, 360.0f, 64, color);
     DrawRing(center, std::max(0.0f, inner - pixel), inner, 0.0f, 360.0f, 48, Fade(color, 0.35f));
     DrawCircleV(center, 2.0f * pixel, color);
+}
+
+void App::drawMountainPasses() const {
+    if (!m_showPasses || m_geographyDirty) {
+        return;
+    }
+    // The map symbol of a pass: two arcs facing away from each other, ")(", like the two
+    // slopes the road squeezes between. Sizes are in screen pixels, whatever the zoom.
+    const float pixel = 1.0f / m_camera.zoom;
+    const float radius = 7.0f * pixel;
+    const float thickness = 2.0f * pixel;
+    constexpr Color kPassColor{58, 38, 26, 235};
+    for (const MountainPass& pass : m_geography.passes) {
+        const Vector2 center{static_cast<float>(pass.x) + 0.5f, static_cast<float>(pass.y) + 0.5f};
+        const Vector2 west{center.x - 1.25f * radius, center.y};
+        const Vector2 east{center.x + 1.25f * radius, center.y};
+        DrawRing(west, radius - thickness, radius, -50.0f, 50.0f, 12, kPassColor);
+        DrawRing(east, radius - thickness, radius, 130.0f, 230.0f, 12, kPassColor);
+    }
 }
 
 void App::drawUi() {
@@ -85,6 +130,9 @@ void App::drawUi() {
 
     if (m_showGenerator) {
         drawGeneratorWindow();
+    }
+    if (m_showGeography) {
+        drawGeographyWindow();
     }
     if (m_showControls) {
         drawControlsWindow();
@@ -107,6 +155,9 @@ float App::drawMainMenu() {
                 withIcon(ICON_FA_WAND_MAGIC_SPARKLES, m_text(TextId::MenuGenerate)).c_str())) {
             m_showGenerator = true;
         }
+        if (ImGui::MenuItem(withIcon(ICON_FA_GLOBE, m_text(TextId::MenuGeography)).c_str())) {
+            m_showGeography = true;
+        }
         if (ImGui::MenuItem(withIcon(ICON_FA_IMAGE, m_text(TextId::MenuExportPng)).c_str())) {
             exportPng();
         }
@@ -127,6 +178,19 @@ float App::drawMainMenu() {
             m_needsRecolor = true;
         }
         if (ImGui::MenuItem(m_text(TextId::MenuCoastline), nullptr, &m_colors.coastline)) {
+            m_needsRecolor = true;
+        }
+        if (ImGui::MenuItem(m_text(TextId::MenuRivers), nullptr, &m_colors.rivers)) {
+            m_needsRecolor = true;
+        }
+        ImGui::MenuItem(m_text(TextId::MenuPasses), nullptr, &m_showPasses);
+        ImGui::Separator();
+        if (ImGui::MenuItem(m_text(TextId::MenuReliefMap), "M", m_colors.mode == MapMode::Relief)) {
+            m_colors.mode = MapMode::Relief;
+            m_needsRecolor = true;
+        }
+        if (ImGui::MenuItem(m_text(TextId::MenuBiomeMap), "M", m_colors.mode == MapMode::Biomes)) {
+            m_colors.mode = MapMode::Biomes;
             m_needsRecolor = true;
         }
         ImGui::EndMenu();
@@ -173,8 +237,8 @@ float App::drawStatusBar() {
     ImGui::SetNextWindowPos({0.0f, top});
     ImGui::SetNextWindowSize({static_cast<float>(GetScreenWidth()), height});
     // Vertical padding = frame padding, so one line of text fills exactly the frame height.
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {2.0f * style.FramePadding.x,
-                                                      style.FramePadding.y});
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
+                        {2.0f * style.FramePadding.x, style.FramePadding.y});
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     constexpr ImGuiWindowFlags kFlags =
@@ -189,9 +253,31 @@ float App::drawStatusBar() {
         const bool hoveringMap = !ImGui::GetIO().WantCaptureMouse && m_map.contains(x, y);
         if (hoveringMap) {
             const float h = m_map.at(x, y);
+            TextId kind = h < m_colors.seaLevel ? TextId::StatusWater : TextId::StatusLand;
+            const bool knowsGeography = !m_geographyDirty && kind == TextId::StatusLand;
+            const std::size_t i =
+                static_cast<std::size_t>(y) * static_cast<std::size_t>(m_map.width()) +
+                static_cast<std::size_t>(x);
+            if (knowsGeography) {
+                const Hydrology& water = m_geography.hydrology;
+                const bool nearPass =
+                    m_showPasses && std::ranges::any_of(m_geography.passes, [&](const auto& p) {
+                        return std::abs(p.x - x) <= 2 && std::abs(p.y - y) <= 2;
+                    });
+                if (nearPass) {
+                    kind = TextId::StatusPass;
+                } else if (water.isLake(i, h)) {
+                    kind = TextId::StatusLake;
+                } else if (water.isRiver(i, h)) {
+                    kind = TextId::StatusRiver;
+                }
+            }
             ImGui::Text("%s %d, %d   %s %.3f (%s)", m_text(TextId::StatusCell), x, y,
-                        m_text(TextId::StatusHeight), static_cast<double>(h),
-                        m_text(h < m_colors.seaLevel ? TextId::StatusWater : TextId::StatusLand));
+                        m_text(TextId::StatusHeight), static_cast<double>(h), m_text(kind));
+            if (knowsGeography) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("%s", m_text(biomeName(m_geography.climate.biome[i])));
+            }
         } else {
             ImGui::TextDisabled("%s", m_text(TextId::StatusOutsideMap));
         }
@@ -218,12 +304,14 @@ float App::drawToolbar(float top) {
     ImGui::SetNextWindowPos({kMargin, top + kMargin});
     float right = 0.0f;
     if (ImGui::Begin("###toolbar", nullptr, kFixedPanelFlags | ImGuiWindowFlags_NoTitleBar)) {
-        // ImGui 1.92 renders fonts at any size on demand, so the icons can simply be drawn larger.
-        ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * kToolIconScale);
-        const float size = 1.6f * ImGui::GetFrameHeight();
+        const float size = 2.2f * ImGui::GetFrameHeight();
+        const float iconFontSize = ImGui::GetStyle().FontSizeBase * kToolIconScale;
         for (std::size_t i = 0; i < kTools.size(); ++i) {
-            const BrushTool tool = kTools[i];
-            const bool active = m_brush.tool == tool;
+            const Tool tool = kTools[i];
+            const bool active = m_tool == tool;
+            if (i > 0 && isShapeTool(tool) && !isShapeTool(kTools[i - 1])) {
+                ImGui::Separator();  // sculpting tools above, shape tools below
+            }
 
             ImGui::PushID(static_cast<int>(i));
             int pushedColors = 1;
@@ -233,14 +321,22 @@ float App::drawToolbar(float top) {
                                       ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
                 ++pushedColors;
             }
+            // ImGui 1.92 renders fonts at any size on demand, so the icon can simply be larger.
+            // Only the button gets the big size: the tooltip below uses the normal text size.
+            ImGui::PushFont(nullptr, iconFontSize);
             if (ImGui::Button(toolIcon(tool), {size, size})) {
-                m_brush.tool = tool;
+                m_tool = tool;
             }
+            ImGui::PopFont();
             ImGui::PopStyleColor(pushedColors);
-            ImGui::SetItemTooltip("%s (%d)", m_text(toolName(tool)), static_cast<int>(i) + 1);
+            if (isShapeTool(tool)) {
+                ImGui::SetItemTooltip("%s (%d)\n%s", m_text(toolName(tool)),
+                                      static_cast<int>(i) + 1, m_text(TextId::ShapeToolHint));
+            } else {
+                ImGui::SetItemTooltip("%s (%d)", m_text(toolName(tool)), static_cast<int>(i) + 1);
+            }
             ImGui::PopID();
         }
-        ImGui::PopFont();
     }
     right = ImGui::GetWindowPos().x + ImGui::GetWindowWidth();
     ImGui::End();
@@ -255,15 +351,17 @@ float App::drawPropertiesPanel(float top) {
     ImGui::SetNextWindowSizeConstraints({width, 0.0f}, {width, FLT_MAX});
     if (ImGui::Begin(withId(m_text(TextId::PanelProperties), "properties").c_str(), nullptr,
                      kFixedPanelFlags)) {
-        const std::string brushHeader = std::format(
-            "{}: {}###brush", m_text(TextId::SectionBrush), m_text(toolName(m_brush.tool)));
+        const std::string brushHeader =
+            std::format("{}: {}###brush", m_text(TextId::SectionBrush), m_text(toolName(m_tool)));
         if (ImGui::CollapsingHeader(brushHeader.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
             labelAbove(m_text(TextId::BrushRadius));
             ImGui::SliderFloat("##radius", &m_brush.radius, kMinBrushRadius, kMaxBrushRadius,
                                "%.0f");
-            labelAbove(m_text(TextId::BrushStrength));
-            ImGui::SliderFloat("##strength", &m_brush.strength, 0.02f, 1.5f, "%.2f");
-            if (m_brush.tool == BrushTool::Flatten) {
+            if (!isShapeTool(m_tool)) {  // shape tools always paint at full speed
+                labelAbove(m_text(TextId::BrushStrength));
+                ImGui::SliderFloat("##strength", &m_brush.strength, 0.02f, 1.5f, "%.2f");
+            }
+            if (m_tool == Tool::Flatten) {
                 labelAbove(m_text(TextId::BrushTargetHeight));
                 ImGui::SliderFloat("##target", &m_brush.targetHeight, 0.0f, 1.0f, "%.3f");
             }
@@ -273,7 +371,7 @@ float App::drawPropertiesPanel(float top) {
                                     ImGuiTreeNodeFlags_DefaultOpen)) {
             labelAbove(m_text(TextId::SeaLevel));
             if (ImGui::SliderFloat("##sea", &m_colors.seaLevel, 0.0f, 1.0f, "%.3f")) {
-                m_needsRecolor = true;
+                terrainChanged();  // the coast moves, so lakes and rivers change too
             }
             ImGui::BeginDisabled(!m_colors.hillshade);  // turned on and off in the View menu
             labelAbove(m_text(TextId::HillshadeStrength));
@@ -288,6 +386,10 @@ float App::drawPropertiesPanel(float top) {
                 withIcon(ICON_FA_WAND_MAGIC_SPARKLES, m_text(TextId::MenuGenerate)).c_str(),
                 {-FLT_MIN, 0.0f})) {
             m_showGenerator = true;
+        }
+        if (ImGui::Button(withIcon(ICON_FA_GLOBE, m_text(TextId::MenuGeography)).c_str(),
+                          {-FLT_MIN, 0.0f})) {
+            m_showGeography = true;
         }
     }
     ImGui::End();
@@ -315,6 +417,35 @@ void App::drawGeneratorWindow() {
         }
     };
 
+    // Shape of the world: a preset, or the mask drawn with the Land / Sea tools.
+    labelAbove(m_text(TextId::Shape));
+    if (ImGui::BeginCombo("##shape", m_text(shapeName(m_generator.shape)))) {
+        for (const ShapePreset preset : kShapePresets) {
+            const bool selected = preset == m_generator.shape && !m_shapeIsPainted;
+            if (ImGui::Selectable(m_text(shapeName(preset)), selected)) {
+                applyShapePreset(preset);
+            }
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SetItemTooltip("%s", m_text(TextId::ShapePresetTooltip));
+    if (m_shapeIsPainted) {
+        ImGui::TextDisabled("%s", m_text(TextId::ShapePainted));
+        ImGui::SameLine();
+        if (ImGui::SmallButton(m_text(TextId::ResetShape))) {
+            applyShapePreset(m_generator.shape);
+        }
+    }
+
+    labelAbove(m_text(TextId::ShapeStrength));
+    ImGui::SliderFloat("##shapestrength", &m_generator.shapeStrength, 0.0f, 1.0f, "%.2f");
+    ImGui::SetItemTooltip("%s", m_text(TextId::ShapeStrengthTooltip));
+    // Only the mixing changes, the noise stays: rebuild instead of regenerating.
+    if (ImGui::IsItemDeactivatedAfterEdit() && !m_hasManualEdits) {
+        rebuildTerrain();
+    }
+    ImGui::Separator();
+
     // Seed field and a dice button that fills it with a random value.
     ImGui::TextUnformatted(m_text(TextId::Seed));
     const float diceWidth = ImGui::GetFrameHeight();
@@ -332,11 +463,6 @@ void App::drawGeneratorWindow() {
     labelAbove(m_text(TextId::LandSize));
     ImGui::SliderFloat("##landsize", &m_generator.frequency, 0.5f, 10.0f, "%.2f");
     ImGui::SetItemTooltip("%s", m_text(TextId::LandSizeTooltip));
-    finished();
-
-    labelAbove(m_text(TextId::Island));
-    ImGui::SliderFloat("##island", &m_generator.islandStrength, 0.0f, 1.0f, "%.2f");
-    ImGui::SetItemTooltip("%s", m_text(TextId::IslandTooltip));
     finished();
 
     if (ImGui::TreeNode(withId(m_text(TextId::Advanced), "advanced").c_str())) {
@@ -358,8 +484,7 @@ void App::drawGeneratorWindow() {
         ImGui::TextWrapped("%s", m_text(TextId::ManualEditsWarning));
         ImGui::PopStyleColor();
     }
-    const TextId generateLabel =
-        m_hasManualEdits ? TextId::GenerateDiscardEdits : TextId::Generate;
+    const TextId generateLabel = m_hasManualEdits ? TextId::GenerateDiscardEdits : TextId::Generate;
     const bool generateClicked = ImGui::Button(m_text(generateLabel), {-FLT_MIN, 0.0f});
 
     if (generateClicked || (settingsChanged && !m_hasManualEdits)) {
@@ -368,10 +493,83 @@ void App::drawGeneratorWindow() {
     ImGui::End();
 }
 
+void App::drawGeographyWindow() {
+    ImGui::SetNextWindowPos(
+        {0.5f * static_cast<float>(GetScreenWidth()), 0.5f * static_cast<float>(GetScreenHeight())},
+        ImGuiCond_FirstUseEver, {0.5f, 0.5f});
+    const float width = kGeneratorWidth * uiScale();
+    ImGui::SetNextWindowSizeConstraints({width, 0.0f}, {width, FLT_MAX});
+    if (!ImGui::Begin(withId(m_text(TextId::WindowGeography), "geography").c_str(),
+                      &m_showGeography,
+                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse)) {
+        ImGui::End();
+        return;
+    }
+
+    if (ImGui::CollapsingHeader(withId(m_text(TextId::SectionErosion), "erosion").c_str(),
+                                ImGuiTreeNodeFlags_DefaultOpen)) {
+        labelAbove(m_text(TextId::ErosionDroplets));
+        ImGui::SliderInt("##droplets", &m_erosionDroplets, 10'000, 500'000, "%d",
+                         ImGuiSliderFlags_Logarithmic);
+        ImGui::SetItemTooltip("%s", m_text(TextId::ErosionDropletsTooltip));
+        if (ImGui::Button(withIcon(ICON_FA_CLOUD_RAIN, m_text(TextId::Erode)).c_str(),
+                          {-FLT_MIN, 0.0f})) {
+            runErosion();
+        }
+    }
+
+    if (ImGui::CollapsingHeader(withId(m_text(TextId::MenuRivers), "rivers").c_str(),
+                                ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (ImGui::Checkbox(withId(m_text(TextId::MenuRivers), "showrivers").c_str(),
+                            &m_colors.rivers)) {
+            m_needsRecolor = true;
+        }
+        labelAbove(m_text(TextId::RiverThreshold));
+        if (ImGui::SliderFloat("##riverthreshold", &m_geographySettings.riverThreshold, 20.0f,
+                               5'000.0f, "%.0f", ImGuiSliderFlags_Logarithmic)) {
+            // Only the drawing depends on the threshold: update it live while dragging.
+            m_geography.hydrology.settings.riverThreshold = m_geographySettings.riverThreshold;
+            m_needsRecolor = true;
+        }
+        ImGui::SetItemTooltip("%s", m_text(TextId::RiverThresholdTooltip));
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            m_geographyDirty = true;  // rivers make the land around them wetter: redo the climate
+        }
+    }
+
+    ImGui::Checkbox(withId(m_text(TextId::MenuPasses), "showpasses").c_str(), &m_showPasses);
+
+    if (ImGui::CollapsingHeader(withId(m_text(TextId::SectionClimate), "climate").c_str(),
+                                ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (ImGui::RadioButton(m_text(TextId::MenuReliefMap), m_colors.mode == MapMode::Relief)) {
+            m_colors.mode = MapMode::Relief;
+            m_needsRecolor = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::RadioButton(m_text(TextId::MenuBiomeMap), m_colors.mode == MapMode::Biomes)) {
+            m_colors.mode = MapMode::Biomes;
+            m_needsRecolor = true;
+        }
+        labelAbove(m_text(TextId::NorthTemperature));
+        ImGui::SliderFloat("##north", &m_geographySettings.northTemperature, 0.0f, 1.0f, "%.2f");
+        ImGui::SetItemTooltip("%s", m_text(TextId::TemperatureTooltip));
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            m_geographyDirty = true;
+        }
+        labelAbove(m_text(TextId::SouthTemperature));
+        ImGui::SliderFloat("##south", &m_geographySettings.southTemperature, 0.0f, 1.0f, "%.2f");
+        ImGui::SetItemTooltip("%s", m_text(TextId::TemperatureTooltip));
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            m_geographyDirty = true;
+        }
+    }
+    ImGui::End();
+}
+
 void App::drawControlsWindow() {
-    ImGui::SetNextWindowPos({0.5f * static_cast<float>(GetScreenWidth()),
-                             0.5f * static_cast<float>(GetScreenHeight())},
-                            ImGuiCond_FirstUseEver, {0.5f, 0.5f});
+    ImGui::SetNextWindowPos(
+        {0.5f * static_cast<float>(GetScreenWidth()), 0.5f * static_cast<float>(GetScreenHeight())},
+        ImGuiCond_FirstUseEver, {0.5f, 0.5f});
     if (ImGui::Begin(withId(m_text(TextId::MenuControls), "controls").c_str(), &m_showControls,
                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse)) {
         for (const TextId line : {TextId::HelpPaint, TextId::HelpSwapRaiseLower, TextId::HelpPan,
