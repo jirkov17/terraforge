@@ -95,8 +95,18 @@ constexpr auto kTranslations = std::to_array<Translation>({
 
 // Checks at compile time that the table can be indexed directly by TextId.
 consteval bool isValidTable(std::span<const Translation> table) {
-    // TODO(human)
-    (void)table;
+    if (table.size() != kTextCount) {
+        return false;  // a TextId has no row, or a row has no TextId
+    }
+    for (std::size_t i = 0; i < table.size(); ++i) {
+        const Translation& row = table[i];
+        if (static_cast<std::size_t>(row.id) != i) {
+            return false;  // rows are out of enum order: lookup by index would return wrong text
+        }
+        if (row.english.empty() || row.russian.empty()) {
+            return false;
+        }
+    }
     return true;
 }
 
