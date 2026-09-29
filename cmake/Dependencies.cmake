@@ -43,6 +43,8 @@ add_library(imgui_raylib STATIC
     ${rlimgui_SOURCE_DIR}/rlImGui.cpp)
 target_include_directories(imgui_raylib SYSTEM PUBLIC ${imgui_SOURCE_DIR} ${rlimgui_SOURCE_DIR})
 target_link_libraries(imgui_raylib PUBLIC raylib)
+# rlImGui merges Font Awesome icons into the UI font; match them to our 16 px Noto Sans (default is 11).
+target_compile_definitions(imgui_raylib PUBLIC FONT_AWESOME_ICON_SIZE=14)
 
 add_library(fastnoiselite INTERFACE)
 target_include_directories(fastnoiselite SYSTEM INTERFACE ${fastnoiselite_SOURCE_DIR}/Cpp)
