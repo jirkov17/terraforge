@@ -5,6 +5,7 @@
 #include <array>
 #include <cstring>
 #include <format>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -48,6 +49,14 @@ TEST(Localization, MessagesWithAFileNameFormatInEveryLanguage) {
 TEST(Localization, LanguageNamesAreNative) {
     EXPECT_EQ(tf::languageName(Language::English), "English");
     EXPECT_EQ(tf::languageName(Language::Russian), "Русский");
+}
+
+TEST(Localization, LanguageCodesRoundTrip) {
+    for (const Language language : kLanguages) {
+        EXPECT_EQ(tf::languageFromCode(tf::languageCode(language)), language);
+    }
+    EXPECT_EQ(tf::languageFromCode("de"), std::nullopt);
+    EXPECT_EQ(tf::languageFromCode(""), std::nullopt);
 }
 
 TEST(Localizer, SwitchesLanguage) {

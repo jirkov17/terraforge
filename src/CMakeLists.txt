@@ -1,5 +1,6 @@
 # Core: terrain data and algorithms. Pure C++ without graphics, so it is easy to unit test.
 add_library(terraforge_core STATIC
+    core/AppSettings.cpp
     core/Brush.cpp
     core/Heightmap.cpp
     core/Localization.cpp

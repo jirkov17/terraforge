@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 #include <string_view>
 
 namespace tf {
@@ -85,6 +86,10 @@ inline constexpr std::size_t kTextCount = static_cast<std::size_t>(TextId::Count
 // The language's own name ("English", "Русский"): shown untranslated in the language menu,
 // so people can find their language whatever language is active now.
 [[nodiscard]] std::string_view languageName(Language language) noexcept;
+
+// Short code for settings files: "en", "ru". languageFromCode() returns nothing for unknown codes.
+[[nodiscard]] std::string_view languageCode(Language language) noexcept;
+[[nodiscard]] std::optional<Language> languageFromCode(std::string_view code) noexcept;
 
 // UI text in the given language, UTF-8. Points to a string literal: null-terminated and valid
 // for the whole program, so it can be passed straight to ImGui.

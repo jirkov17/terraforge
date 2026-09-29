@@ -125,6 +125,25 @@ std::string_view languageName(Language language) noexcept {
     return "?";
 }
 
+std::string_view languageCode(Language language) noexcept {
+    switch (language) {
+        case Language::English:
+            return "en";
+        case Language::Russian:
+            return "ru";
+    }
+    return "en";
+}
+
+std::optional<Language> languageFromCode(std::string_view code) noexcept {
+    for (const Language language : {Language::English, Language::Russian}) {
+        if (code == languageCode(language)) {
+            return language;
+        }
+    }
+    return std::nullopt;
+}
+
 const char* translate(TextId id, Language language) noexcept {
     // Safe thanks to the static_assert above: row i describes TextId i.
     assert(id < TextId::Count);
