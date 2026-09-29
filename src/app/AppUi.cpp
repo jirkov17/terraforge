@@ -22,12 +22,11 @@ namespace {
 constexpr float kMargin = 8.0f;             // gap between the UI panels and the screen edges
 constexpr float kPropertiesWidth = 280.0f;  // at 100% display scaling
 constexpr float kGeneratorWidth = 320.0f;
-constexpr float kToolIconScale = 1.5f;      // toolbar icons relative to the text size
+constexpr float kToolIconScale = 1.5f;  // toolbar icons relative to the text size
 
-constexpr ImGuiWindowFlags kFixedPanelFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
-                                              ImGuiWindowFlags_NoCollapse |
-                                              ImGuiWindowFlags_NoSavedSettings |
-                                              ImGuiWindowFlags_AlwaysAutoResize;
+constexpr ImGuiWindowFlags kFixedPanelFlags =
+    ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
+    ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize;
 
 constexpr const char* kMissingFontWarning =
     "Font assets/fonts/NotoSans-Regular.ttf not found: Russian is unavailable";
@@ -60,6 +59,22 @@ void labelAbove(const char* text) {
     ImGui::SetNextItemWidth(-FLT_MIN);
 }
 
+constexpr TextId shapeName(ShapePreset preset) noexcept {
+    switch (preset) {
+        case ShapePreset::Continent:
+            return TextId::ShapeContinent;
+        case ShapePreset::Archipelago:
+            return TextId::ShapeArchipelago;
+        case ShapePreset::TwoContinents:
+            return TextId::ShapeTwoContinents;
+        case ShapePreset::InlandSea:
+            return TextId::ShapeInlandSea;
+        case ShapePreset::Ocean:
+            return TextId::ShapeOcean;
+    }
+    return TextId::ShapeContinent;
+}
+
 }  // namespace
 
 void App::drawBrushCursor() const {
@@ -68,7 +83,7 @@ void App::drawBrushCursor() const {
     }
     const Vector2 center = mouseCell();
     const float pixel = 1.0f / m_camera.zoom;  // one screen pixel in world units
-    const Color color = toolColor(m_brush.tool);
+    const Color color = toolColor(m_tool);
 
     const float outer = m_brush.radius;
     const float inner = 0.5f * m_brush.radius;  // where the brush is at about half strength
@@ -173,8 +188,8 @@ float App::drawStatusBar() {
     ImGui::SetNextWindowPos({0.0f, top});
     ImGui::SetNextWindowSize({static_cast<float>(GetScreenWidth()), height});
     // Vertical padding = frame padding, so one line of text fills exactly the frame height.
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {2.0f * style.FramePadding.x,
-                                                      style.FramePadding.y});
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
+                        {2.0f * style.FramePadding.x, style.FramePadding.y});
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     constexpr ImGuiWindowFlags kFlags =
@@ -218,12 +233,14 @@ float App::drawToolbar(float top) {
     ImGui::SetNextWindowPos({kMargin, top + kMargin});
     float right = 0.0f;
     if (ImGui::Begin("###toolbar", nullptr, kFixedPanelFlags | ImGuiWindowFlags_NoTitleBar)) {
-        // ImGui 1.92 renders fonts at any size on demand, so the icons can simply be drawn larger.
-        ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * kToolIconScale);
-        const float size = 1.6f * ImGui::GetFrameHeight();
+        const float size = 2.2f * ImGui::GetFrameHeight();
+        const float iconFontSize = ImGui::GetStyle().FontSizeBase * kToolIconScale;
         for (std::size_t i = 0; i < kTools.size(); ++i) {
-            const BrushTool tool = kTools[i];
-            const bool active = m_brush.tool == tool;
+            const Tool tool = kTools[i];
+            const bool active = m_tool == tool;
+            if (i > 0 && isShapeTool(tool) && !isShapeTool(kTools[i - 1])) {
+                ImGui::Separator();  // sculpting tools above, shape tools below
+            }
 
             ImGui::PushID(static_cast<int>(i));
             int pushedColors = 1;
@@ -233,14 +250,22 @@ float App::drawToolbar(float top) {
                                       ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
                 ++pushedColors;
             }
+            // ImGui 1.92 renders fonts at any size on demand, so the icon can simply be larger.
+            // Only the button gets the big size: the tooltip below uses the normal text size.
+            ImGui::PushFont(nullptr, iconFontSize);
             if (ImGui::Button(toolIcon(tool), {size, size})) {
-                m_brush.tool = tool;
+                m_tool = tool;
             }
+            ImGui::PopFont();
             ImGui::PopStyleColor(pushedColors);
-            ImGui::SetItemTooltip("%s (%d)", m_text(toolName(tool)), static_cast<int>(i) + 1);
+            if (isShapeTool(tool)) {
+                ImGui::SetItemTooltip("%s (%d)\n%s", m_text(toolName(tool)),
+                                      static_cast<int>(i) + 1, m_text(TextId::ShapeToolHint));
+            } else {
+                ImGui::SetItemTooltip("%s (%d)", m_text(toolName(tool)), static_cast<int>(i) + 1);
+            }
             ImGui::PopID();
         }
-        ImGui::PopFont();
     }
     right = ImGui::GetWindowPos().x + ImGui::GetWindowWidth();
     ImGui::End();
@@ -255,15 +280,17 @@ float App::drawPropertiesPanel(float top) {
     ImGui::SetNextWindowSizeConstraints({width, 0.0f}, {width, FLT_MAX});
     if (ImGui::Begin(withId(m_text(TextId::PanelProperties), "properties").c_str(), nullptr,
                      kFixedPanelFlags)) {
-        const std::string brushHeader = std::format(
-            "{}: {}###brush", m_text(TextId::SectionBrush), m_text(toolName(m_brush.tool)));
+        const std::string brushHeader =
+            std::format("{}: {}###brush", m_text(TextId::SectionBrush), m_text(toolName(m_tool)));
         if (ImGui::CollapsingHeader(brushHeader.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
             labelAbove(m_text(TextId::BrushRadius));
             ImGui::SliderFloat("##radius", &m_brush.radius, kMinBrushRadius, kMaxBrushRadius,
                                "%.0f");
-            labelAbove(m_text(TextId::BrushStrength));
-            ImGui::SliderFloat("##strength", &m_brush.strength, 0.02f, 1.5f, "%.2f");
-            if (m_brush.tool == BrushTool::Flatten) {
+            if (!isShapeTool(m_tool)) {  // shape tools always paint at full speed
+                labelAbove(m_text(TextId::BrushStrength));
+                ImGui::SliderFloat("##strength", &m_brush.strength, 0.02f, 1.5f, "%.2f");
+            }
+            if (m_tool == Tool::Flatten) {
                 labelAbove(m_text(TextId::BrushTargetHeight));
                 ImGui::SliderFloat("##target", &m_brush.targetHeight, 0.0f, 1.0f, "%.3f");
             }
@@ -315,6 +342,35 @@ void App::drawGeneratorWindow() {
         }
     };
 
+    // Shape of the world: a preset, or the mask drawn with the Land / Sea tools.
+    labelAbove(m_text(TextId::Shape));
+    if (ImGui::BeginCombo("##shape", m_text(shapeName(m_generator.shape)))) {
+        for (const ShapePreset preset : kShapePresets) {
+            const bool selected = preset == m_generator.shape && !m_shapeIsPainted;
+            if (ImGui::Selectable(m_text(shapeName(preset)), selected)) {
+                applyShapePreset(preset);
+            }
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SetItemTooltip("%s", m_text(TextId::ShapePresetTooltip));
+    if (m_shapeIsPainted) {
+        ImGui::TextDisabled("%s", m_text(TextId::ShapePainted));
+        ImGui::SameLine();
+        if (ImGui::SmallButton(m_text(TextId::ResetShape))) {
+            applyShapePreset(m_generator.shape);
+        }
+    }
+
+    labelAbove(m_text(TextId::ShapeStrength));
+    ImGui::SliderFloat("##shapestrength", &m_generator.shapeStrength, 0.0f, 1.0f, "%.2f");
+    ImGui::SetItemTooltip("%s", m_text(TextId::ShapeStrengthTooltip));
+    // Only the mixing changes, the noise stays: rebuild instead of regenerating.
+    if (ImGui::IsItemDeactivatedAfterEdit() && !m_hasManualEdits) {
+        rebuildTerrain();
+    }
+    ImGui::Separator();
+
     // Seed field and a dice button that fills it with a random value.
     ImGui::TextUnformatted(m_text(TextId::Seed));
     const float diceWidth = ImGui::GetFrameHeight();
@@ -332,11 +388,6 @@ void App::drawGeneratorWindow() {
     labelAbove(m_text(TextId::LandSize));
     ImGui::SliderFloat("##landsize", &m_generator.frequency, 0.5f, 10.0f, "%.2f");
     ImGui::SetItemTooltip("%s", m_text(TextId::LandSizeTooltip));
-    finished();
-
-    labelAbove(m_text(TextId::Island));
-    ImGui::SliderFloat("##island", &m_generator.islandStrength, 0.0f, 1.0f, "%.2f");
-    ImGui::SetItemTooltip("%s", m_text(TextId::IslandTooltip));
     finished();
 
     if (ImGui::TreeNode(withId(m_text(TextId::Advanced), "advanced").c_str())) {
@@ -358,8 +409,7 @@ void App::drawGeneratorWindow() {
         ImGui::TextWrapped("%s", m_text(TextId::ManualEditsWarning));
         ImGui::PopStyleColor();
     }
-    const TextId generateLabel =
-        m_hasManualEdits ? TextId::GenerateDiscardEdits : TextId::Generate;
+    const TextId generateLabel = m_hasManualEdits ? TextId::GenerateDiscardEdits : TextId::Generate;
     const bool generateClicked = ImGui::Button(m_text(generateLabel), {-FLT_MIN, 0.0f});
 
     if (generateClicked || (settingsChanged && !m_hasManualEdits)) {
@@ -369,9 +419,9 @@ void App::drawGeneratorWindow() {
 }
 
 void App::drawControlsWindow() {
-    ImGui::SetNextWindowPos({0.5f * static_cast<float>(GetScreenWidth()),
-                             0.5f * static_cast<float>(GetScreenHeight())},
-                            ImGuiCond_FirstUseEver, {0.5f, 0.5f});
+    ImGui::SetNextWindowPos(
+        {0.5f * static_cast<float>(GetScreenWidth()), 0.5f * static_cast<float>(GetScreenHeight())},
+        ImGuiCond_FirstUseEver, {0.5f, 0.5f});
     if (ImGui::Begin(withId(m_text(TextId::MenuControls), "controls").c_str(), &m_showControls,
                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse)) {
         for (const TextId line : {TextId::HelpPaint, TextId::HelpSwapRaiseLower, TextId::HelpPan,

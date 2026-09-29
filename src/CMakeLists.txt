@@ -2,6 +2,7 @@
 add_library(terraforge_core STATIC
     core/AppSettings.cpp
     core/Brush.cpp
+    core/ContinentShape.cpp
     core/Heightmap.cpp
     core/Localization.cpp
     core/MapColorizer.cpp

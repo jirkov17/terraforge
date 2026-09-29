@@ -30,6 +30,9 @@ enum class TextId {
     ToolLower,
     ToolSmooth,
     ToolFlatten,
+    ToolLand,
+    ToolSea,
+    ShapeToolHint,
 
     // Properties panel
     PanelProperties,
@@ -47,8 +50,17 @@ enum class TextId {
     RandomSeedTooltip,
     LandSize,
     LandSizeTooltip,
-    Island,
-    IslandTooltip,
+    Shape,
+    ShapePresetTooltip,
+    ShapeContinent,
+    ShapeArchipelago,
+    ShapeTwoContinents,
+    ShapeInlandSea,
+    ShapeOcean,
+    ShapeStrength,
+    ShapeStrengthTooltip,
+    ShapePainted,
+    ResetShape,
     Advanced,
     Detail,
     DetailTooltip,
@@ -70,6 +82,7 @@ enum class TextId {
     ExportSaved,
     SaveFailed,
     ExportTooMany,
+    ManualEditsReplaced,
 
     // Controls help
     HelpPaint,

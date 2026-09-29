@@ -42,4 +42,8 @@ private:
     std::vector<float> m_values;
 };
 
+// Blurs the grid with three box blur passes (close to a Gaussian blur). Each pass uses a running
+// sum, so the cost does not depend on the radius. Cells outside the map repeat the edge cells.
+void blurField(Heightmap& field, int radius);
+
 }  // namespace tf

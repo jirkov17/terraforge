@@ -22,6 +22,8 @@ constexpr int kWindowHeight = 800;
 constexpr float kMargin = 10.0f;
 constexpr float kMinZoom = 0.25f;
 constexpr float kMaxZoom = 32.0f;
+// Land / Sea turn sea into land (mask 0 -> 1) in about a third of a second at the brush center.
+constexpr float kShapeBrushStrength = 3.0f;
 
 constexpr Color kBackgroundColor{28, 32, 38, 255};
 constexpr const char* kSettingsFile = "terraforge.ini";
@@ -39,6 +41,8 @@ bool isControlDown() {
 App::App()
     : m_window(kWindowWidth, kWindowHeight, "Terraforge"),
       m_map(kMapSize, kMapSize),
+      m_noise(kMapSize, kMapSize),
+      m_shapeMask(kMapSize, kMapSize),
       m_renderer(kMapSize, kMapSize),
       m_settingsPath(std::filesystem::path(GetApplicationDirectory()) / kSettingsFile),
       m_settings(loadSettings(m_settingsPath)),
@@ -123,7 +127,7 @@ void App::handleCameraInput() {
 void App::handleShortcuts() {
     for (std::size_t i = 0; i < kTools.size(); ++i) {
         if (IsKeyPressed(KEY_ONE + static_cast<int>(i))) {
-            m_brush.tool = kTools[i];
+            m_tool = kTools[i];
         }
     }
     if (IsKeyPressed(KEY_LEFT_BRACKET)) {
@@ -142,14 +146,22 @@ void App::paint(float dt) {
         return;
     }
     const Vector2 cell = mouseCell();
+    const Tool tool = isShiftDown() ? oppositeTool(m_tool) : m_tool;  // Shift: Raise <-> Lower
 
     BrushSettings brush = m_brush;
-    if (isShiftDown()) {  // Shift swaps Raise and Lower
-        if (brush.tool == BrushTool::Raise) {
-            brush.tool = BrushTool::Lower;
-        } else if (brush.tool == BrushTool::Lower) {
-            brush.tool = BrushTool::Raise;
+    brush.tool = brushToolFor(tool);
+
+    if (isShapeTool(tool)) {
+        // Land / Sea paint the shape mask, then the whole terrain is rebuilt from it.
+        brush.strength = kShapeBrushStrength;
+        if (applyBrush(m_shapeMask, brush, cell.x, cell.y, dt)) {
+            if (m_hasManualEdits) {
+                m_statusMessage = m_text(TextId::ManualEditsReplaced);
+            }
+            m_shapeIsPainted = true;
+            rebuildTerrain();
         }
+        return;
     }
 
     // Flatten levels the terrain to the height where the stroke started.
@@ -178,9 +190,25 @@ Vector2 App::mouseCell() const {
 // ---------------------------------------------------------------------------------------
 
 void App::regenerate() {
-    generateTerrain(m_map, m_generator);
+    generateNoise(m_noise, m_generator);
+    if (!m_shapeIsPainted) {
+        // Preset outlines depend on the seed too; a hand-drawn shape is kept as it is.
+        makeShapeMask(m_shapeMask, m_generator.shape, m_generator.seed);
+    }
+    rebuildTerrain();
+}
+
+void App::rebuildTerrain() {
+    combineTerrain(m_map, m_noise, m_shapeMask, m_generator.shapeStrength);
     m_needsRecolor = true;
     m_hasManualEdits = false;
+}
+
+void App::applyShapePreset(ShapePreset preset) {
+    m_generator.shape = preset;
+    makeShapeMask(m_shapeMask, preset, m_generator.seed);
+    m_shapeIsPainted = false;
+    rebuildTerrain();
 }
 
 void App::fitMapToScreen() {
@@ -192,7 +220,7 @@ void App::fitMapToScreen() {
 
     m_camera.zoom = std::clamp(std::min(availableWidth / mapWidth, availableHeight / mapHeight),
                                kMinZoom, kMaxZoom);
-    m_camera.target = {mapWidth / 2.0f, mapHeight / 2.0f};  // look at the center of the map...
+    m_camera.target = {mapWidth / 2.0f, mapHeight / 2.0f};    // look at the center of the map...
     m_camera.offset = {m_mapArea.x + m_mapArea.width / 2.0f,  // ...placed in the center of the area
                        m_mapArea.y + m_mapArea.height / 2.0f};
     m_camera.rotation = 0.0f;
@@ -208,7 +236,8 @@ void App::exportPng() {
         const std::string name = path.string();
         // The message comes from the translation table, so the format string is known only at
         // run time: std::vformat instead of std::format (which checks it at compile time).
-        const TextId message = m_renderer.exportPng(name) ? TextId::ExportSaved : TextId::SaveFailed;
+        const TextId message =
+            m_renderer.exportPng(name) ? TextId::ExportSaved : TextId::SaveFailed;
         m_statusMessage = std::vformat(m_text(message), std::make_format_args(name));
         return;
     }
