@@ -38,7 +38,7 @@ TEST(Localization, MessagesWithAFileNameFormatInEveryLanguage) {
     // std::vformat throws std::format_error if a translation breaks the "{}" placeholder.
     const std::string fileName = "map_001.png";
     for (const Language language : kLanguages) {
-        for (const TextId id : {TextId::ExportSaved, TextId::ExportFailed}) {
+        for (const TextId id : {TextId::ExportSaved, TextId::SaveFailed}) {
             const std::string message =
                 std::vformat(tf::translate(id, language), std::make_format_args(fileName));
             EXPECT_NE(message.find(fileName), std::string::npos) << message;

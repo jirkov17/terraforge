@@ -79,7 +79,7 @@ constexpr auto kTranslations = std::to_array<Translation>({
 
     // Messages
     {TextId::ExportSaved, "Saved {} (in the working folder)", "Сохранено: {} (в рабочей папке)"},
-    {TextId::ExportFailed, "Could not save {}", "Не удалось сохранить {}"},
+    {TextId::SaveFailed, "Could not save {}", "Не удалось сохранить {}"},
     {TextId::ExportTooMany, "Too many exported maps, clean up the folder",
      "Слишком много экспортированных карт, почистите папку"},
 

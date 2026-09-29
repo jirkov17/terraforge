@@ -13,6 +13,7 @@ terraforge_set_warnings(terraforge_core)
 # App: window, rendering and UI on top of the core.
 add_executable(terraforge
     app/App.cpp
+    app/AppUi.cpp
     app/MapRenderer.cpp
     app/Window.cpp
     app/main.cpp)

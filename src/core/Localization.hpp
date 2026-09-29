@@ -68,7 +68,7 @@ enum class TextId {
 
     // Messages. "{}" is replaced with a file name (std::vformat).
     ExportSaved,
-    ExportFailed,
+    SaveFailed,
     ExportTooMany,
 
     // Controls help

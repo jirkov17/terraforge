@@ -1,12 +1,12 @@
 #include "app/App.hpp"
 
+#include "app/BrushTools.hpp"
+
 #include <imgui.h>
 #include <raymath.h>
 #include <rlImGui.h>
 
 #include <algorithm>
-#include <array>
-#include <cfloat>
 #include <cmath>
 #include <filesystem>
 #include <format>
@@ -20,30 +20,11 @@ constexpr int kWindowWidth = 1280;
 constexpr int kWindowHeight = 800;
 
 constexpr float kMargin = 10.0f;
-constexpr float kPanelWidth = 340.0f;  // at 100% display scaling
 constexpr float kMinZoom = 0.25f;
 constexpr float kMaxZoom = 32.0f;
-constexpr float kMinBrushRadius = 1.0f;
-constexpr float kMaxBrushRadius = 128.0f;
 
 constexpr Color kBackgroundColor{28, 32, 38, 255};
-
-constexpr std::array kTools{BrushTool::Raise, BrushTool::Lower, BrushTool::Smooth,
-                            BrushTool::Flatten};
-
-Color toolColor(BrushTool tool) {
-    switch (tool) {
-        case BrushTool::Raise:
-            return Color{120, 230, 120, 230};
-        case BrushTool::Lower:
-            return Color{240, 120, 110, 230};
-        case BrushTool::Smooth:
-            return Color{120, 190, 250, 230};
-        case BrushTool::Flatten:
-            return Color{245, 210, 110, 230};
-    }
-    return WHITE;
-}
+constexpr const char* kSettingsFile = "terraforge.ini";
 
 bool isShiftDown() {
     return IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
@@ -53,28 +34,25 @@ bool isControlDown() {
     return IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
 }
 
-// Display scaling set in Windows (1.0 = 100%, 1.5 = 150%). rlImGui scales its font the same way.
-float uiScale() {
-    return std::max(1.0f, GetWindowScaleDPI().x);
-}
-
-float panelWidth() {
-    return kPanelWidth * uiScale();
-}
-
 }  // namespace
 
 App::App()
     : m_window(kWindowWidth, kWindowHeight, "Terraforge"),
       m_map(kMapSize, kMapSize),
       m_renderer(kMapSize, kMapSize),
-      m_panelRight(kMargin + panelWidth()) {
+      m_settingsPath(std::filesystem::path(GetApplicationDirectory()) / kSettingsFile),
+      m_settings(loadSettings(m_settingsPath)),
+      m_text(m_settings.language),
+      m_mapArea{0.0f, 0.0f, static_cast<float>(kWindowWidth), static_cast<float>(kWindowHeight)} {
+    if (!m_imgui.hasCyrillicFont() && m_text.language() == Language::Russian) {
+        // Without the font Russian text would be all "???": stay usable in English.
+        m_text.setLanguage(Language::English);
+    }
     regenerate();
-    fitMapToScreen();
 }
 
 void App::run() {
-    while (!WindowShouldClose()) {
+    while (!WindowShouldClose() && !m_quitRequested) {
         handleInput(GetFrameTime());
 
         if (m_needsRecolor) {
@@ -91,10 +69,16 @@ void App::run() {
         EndMode2D();
 
         rlImGuiBegin();
-        drawUi();
+        drawUi();  // also updates m_mapArea
         rlImGuiEnd();
 
         EndDrawing();
+
+        // The free area is known only after the UI has been drawn once.
+        if (m_fitPending) {
+            fitMapToScreen();
+            m_fitPending = false;
+        }
     }
 }
 
@@ -200,20 +184,17 @@ void App::regenerate() {
 }
 
 void App::fitMapToScreen() {
-    // Fit the whole map into the free area to the right of the UI panel.
-    const float left = m_panelRight + kMargin;
-    const float availableWidth =
-        std::max(1.0f, static_cast<float>(GetScreenWidth()) - left - kMargin);
-    const float availableHeight =
-        std::max(1.0f, static_cast<float>(GetScreenHeight()) - 2.0f * kMargin);
+    // Fit the whole map into the screen area that the UI panels leave free.
+    const float availableWidth = std::max(1.0f, m_mapArea.width - 2.0f * kMargin);
+    const float availableHeight = std::max(1.0f, m_mapArea.height - 2.0f * kMargin);
     const float mapWidth = static_cast<float>(m_map.width());
     const float mapHeight = static_cast<float>(m_map.height());
 
     m_camera.zoom = std::clamp(std::min(availableWidth / mapWidth, availableHeight / mapHeight),
                                kMinZoom, kMaxZoom);
     m_camera.target = {mapWidth / 2.0f, mapHeight / 2.0f};  // look at the center of the map...
-    m_camera.offset = {left + availableWidth / 2.0f,  // ...placed in the center of the free area
-                       kMargin + availableHeight / 2.0f};
+    m_camera.offset = {m_mapArea.x + m_mapArea.width / 2.0f,  // ...placed in the center of the area
+                       m_mapArea.y + m_mapArea.height / 2.0f};
     m_camera.rotation = 0.0f;
 }
 
@@ -224,177 +205,27 @@ void App::exportPng() {
         if (fs::exists(path)) {
             continue;
         }
-        m_statusMessage = m_renderer.exportPng(path.string())
-                              ? std::format("Saved {} (in the working folder)", path.string())
-                              : std::format("Could not save {}", path.string());
+        const std::string name = path.string();
+        // The message comes from the translation table, so the format string is known only at
+        // run time: std::vformat instead of std::format (which checks it at compile time).
+        const TextId message = m_renderer.exportPng(name) ? TextId::ExportSaved : TextId::SaveFailed;
+        m_statusMessage = std::vformat(m_text(message), std::make_format_args(name));
         return;
     }
-    m_statusMessage = "Too many exported maps, clean up the folder";
+    m_statusMessage = m_text(TextId::ExportTooMany);
 }
 
-// ---------------------------------------------------------------------------------------
-// Drawing
-// ---------------------------------------------------------------------------------------
-
-void App::drawBrushCursor() const {
-    if (ImGui::GetIO().WantCaptureMouse) {
+void App::setLanguage(Language language) {
+    if (language == m_text.language()) {
         return;
     }
-    const Vector2 center = mouseCell();
-    const float pixel = 1.0f / m_camera.zoom;  // one screen pixel in world units
-    const Color color = toolColor(m_brush.tool);
-
-    const float outer = m_brush.radius;
-    const float inner = 0.5f * m_brush.radius;  // where the brush is at about half strength
-    DrawRing(center, std::max(0.0f, outer - 1.5f * pixel), outer, 0.0f, 360.0f, 64, color);
-    DrawRing(center, std::max(0.0f, inner - pixel), inner, 0.0f, 360.0f, 48, Fade(color, 0.35f));
-    DrawCircleV(center, 2.0f * pixel, color);
-}
-
-void App::drawUi() {
-    // Fixed width, height follows the content.
-    ImGui::SetNextWindowPos({kMargin, kMargin}, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSizeConstraints({panelWidth(), 0.0f}, {panelWidth(), FLT_MAX});
-    if (ImGui::Begin("Terraforge", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        drawGeneratorSection();
-        drawBrushSection();
-        drawViewSection();
-        drawInfoSection();
-        drawHelpSection();
+    m_text.setLanguage(language);
+    m_settings.language = language;
+    m_statusMessage.clear();  // it was written in the previous language
+    if (!saveSettings(m_settings, m_settingsPath)) {
+        const std::string name = m_settingsPath.string();
+        m_statusMessage = std::vformat(m_text(TextId::SaveFailed), std::make_format_args(name));
     }
-    m_panelRight = ImGui::GetWindowPos().x + ImGui::GetWindowWidth();
-    ImGui::End();
-
-    if (m_showImGuiDemo) {
-        ImGui::ShowDemoWindow(&m_showImGuiDemo);
-    }
-}
-
-void App::drawGeneratorSection() {
-    if (!ImGui::CollapsingHeader("Terrain generation", ImGuiTreeNodeFlags_DefaultOpen)) {
-        return;
-    }
-
-    // Regenerate when a slider is released, not on every frame of dragging it.
-    bool settingsChanged = false;
-    auto finished = [&settingsChanged] {
-        if (ImGui::IsItemDeactivatedAfterEdit()) {
-            settingsChanged = true;
-        }
-    };
-
-    if (ImGui::InputInt("Seed", &m_generator.seed)) {
-        settingsChanged = true;
-    }
-    if (ImGui::Button("Random seed")) {
-        m_generator.seed = GetRandomValue(1, 999'999);
-        settingsChanged = true;
-    }
-
-    ImGui::SliderFloat("Land size", &m_generator.frequency, 0.5f, 10.0f, "%.2f");
-    ImGui::SetItemTooltip("Noise frequency: higher = more and smaller islands");
-    finished();
-    ImGui::SliderInt("Detail", &m_generator.octaves, 1, 10);
-    ImGui::SetItemTooltip("Number of noise octaves");
-    finished();
-    ImGui::SliderFloat("Roughness", &m_generator.gain, 0.2f, 0.8f, "%.2f");
-    ImGui::SetItemTooltip("Noise gain: how strong the small details are");
-    finished();
-    ImGui::SliderFloat("Island", &m_generator.islandStrength, 0.0f, 1.0f, "%.2f");
-    ImGui::SetItemTooltip("0 = land may touch the edges, 1 = ocean all around");
-    finished();
-
-    if (m_hasManualEdits) {
-        ImGui::TextColored({1.0f, 0.8f, 0.4f, 1.0f}, "Map was edited by hand:");
-        ImGui::TextColored({1.0f, 0.8f, 0.4f, 1.0f}, "auto-regeneration is paused.");
-    }
-    const bool generateClicked =
-        ImGui::Button(m_hasManualEdits ? "Generate (discard edits)" : "Generate");
-
-    if (generateClicked || (settingsChanged && !m_hasManualEdits)) {
-        regenerate();
-    }
-}
-
-void App::drawBrushSection() {
-    if (!ImGui::CollapsingHeader("Brush", ImGuiTreeNodeFlags_DefaultOpen)) {
-        return;
-    }
-    for (std::size_t i = 0; i < kTools.size(); ++i) {
-        const std::string label = std::format("{} ({})", toString(kTools[i]), i + 1);
-        if (ImGui::RadioButton(label.c_str(), m_brush.tool == kTools[i])) {
-            m_brush.tool = kTools[i];
-        }
-        if (i % 2 == 0) {
-            ImGui::SameLine(0.5f * panelWidth());  // two tools per row
-        }
-    }
-    ImGui::SliderFloat("Radius", &m_brush.radius, kMinBrushRadius, kMaxBrushRadius, "%.0f cells");
-    ImGui::SliderFloat("Strength", &m_brush.strength, 0.02f, 1.5f, "%.2f");
-    if (m_brush.tool == BrushTool::Flatten) {
-        ImGui::SliderFloat("Target height", &m_brush.targetHeight, 0.0f, 1.0f, "%.3f");
-    }
-}
-
-void App::drawViewSection() {
-    if (!ImGui::CollapsingHeader("Map view", ImGuiTreeNodeFlags_DefaultOpen)) {
-        return;
-    }
-    if (ImGui::SliderFloat("Sea level", &m_colors.seaLevel, 0.0f, 1.0f, "%.3f")) {
-        m_needsRecolor = true;
-    }
-    if (ImGui::Checkbox("Hillshade", &m_colors.hillshade)) {
-        m_needsRecolor = true;
-    }
-    if (m_colors.hillshade) {
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(-FLT_MIN);
-        if (ImGui::SliderFloat("##shade", &m_colors.hillshadeStrength, 0.0f, 1.0f, "%.2f")) {
-            m_needsRecolor = true;
-        }
-    }
-    if (ImGui::Checkbox("Coastline", &m_colors.coastline)) {
-        m_needsRecolor = true;
-    }
-    if (ImGui::Button("Fit to window (F)")) {
-        fitMapToScreen();
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Export PNG")) {
-        exportPng();
-    }
-}
-
-void App::drawInfoSection() {
-    if (!ImGui::CollapsingHeader("Info", ImGuiTreeNodeFlags_DefaultOpen)) {
-        return;
-    }
-    const Vector2 cell = mouseCell();
-    const int x = static_cast<int>(std::floor(cell.x));
-    const int y = static_cast<int>(std::floor(cell.y));
-    if (m_map.contains(x, y)) {
-        const float h = m_map.at(x, y);
-        ImGui::Text("Cell %d, %d   height %.3f (%s)", x, y, static_cast<double>(h),
-                    h < m_colors.seaLevel ? "water" : "land");
-    } else {
-        ImGui::TextDisabled("Cursor is outside the map");
-    }
-    ImGui::Text("Zoom %.2fx   %d FPS", static_cast<double>(m_camera.zoom), GetFPS());
-    if (!m_statusMessage.empty()) {
-        ImGui::TextWrapped("%s", m_statusMessage.c_str());
-    }
-}
-
-void App::drawHelpSection() {
-    if (!ImGui::CollapsingHeader("Controls")) {
-        return;
-    }
-    ImGui::BulletText("LMB: paint with the brush");
-    ImGui::BulletText("Shift + LMB: Raise <-> Lower");
-    ImGui::BulletText("RMB / MMB drag: move the map");
-    ImGui::BulletText("Wheel: zoom, Ctrl + wheel: brush size");
-    ImGui::BulletText("1-4: tools, [ ]: brush size, F: fit");
-    ImGui::Checkbox("Show ImGui demo (UI examples)", &m_showImGuiDemo);
 }
 
 }  // namespace tf
