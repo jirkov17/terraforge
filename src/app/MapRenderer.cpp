@@ -33,11 +33,12 @@ MapRenderer::~MapRenderer() {
     UnloadTexture(m_texture);
 }
 
-void MapRenderer::update(const Heightmap& map, const ColorizeSettings& settings) {
+void MapRenderer::update(const Heightmap& map, const ColorizeSettings& settings,
+                         const Geography* geography) {
     if (map.width() != m_width || map.height() != m_height) {
         throw std::invalid_argument("MapRenderer: heightmap size does not match the texture");
     }
-    colorize(map, settings, m_pixels);
+    colorize(map, settings, m_pixels, geography);
     UpdateTexture(m_texture, m_pixels.data());
 }
 

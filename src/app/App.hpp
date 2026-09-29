@@ -5,6 +5,7 @@
 #include "app/Window.hpp"
 #include "core/AppSettings.hpp"
 #include "core/Brush.hpp"
+#include "core/Geography.hpp"
 #include "core/Heightmap.hpp"
 #include "core/Localization.hpp"
 #include "core/MapColorizer.hpp"
@@ -36,6 +37,8 @@ private:
     void rebuildTerrain();  // combines the cached noise with the shape mask: fast
     void applyShapePreset(ShapePreset preset);
     void runErosion();
+    void terrainChanged();  // the heights changed: recolor and recompute the geography
+    void updateGeography();
     void fitMapToScreen();
     void exportPng();
     void setLanguage(Language language);  // switches the UI and saves the choice
@@ -72,8 +75,11 @@ private:
     Tool m_tool = Tool::Raise;
     BrushSettings m_brush;  // radius, strength and target height; the tool comes from m_tool
     ColorizeSettings m_colors;
+    GeographySettings m_geographySettings;  // the sea level is taken from m_colors
+    Geography m_geography;
 
     bool m_needsRecolor = true;     // the map changed and the texture must be updated
+    bool m_geographyDirty = true;   // m_geography does not match the heights any more
     bool m_hasManualEdits = false;  // the user painted since the last generation
     bool m_shapeIsPainted = false;  // the shape mask was edited with Land / Sea
     bool m_fitPending = true;       // fit the map once the UI has been laid out

@@ -4,11 +4,14 @@
 
 #include "core/ContinentShape.hpp"
 #include "core/Erosion.hpp"
+#include "core/Geography.hpp"
 #include "core/Heightmap.hpp"
 #include "core/TerrainGenerator.hpp"
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdio>
 
@@ -48,4 +51,44 @@ TEST(Benchmark, DISABLED_Erosion) {
     tf::generateTerrain(map, GeneratorSettings{});
     const tf::ErosionSettings settings;
     measure("erode (70k drops)", [&] { tf::erode(map, settings); });
+}
+
+TEST(Benchmark, DISABLED_Geography) {
+    Heightmap map(kMapSize, kMapSize);
+    tf::generateTerrain(map, GeneratorSettings{});
+    tf::Geography geography;
+    measure("analyzeGeography",
+            [&] { geography = tf::analyzeGeography(map, tf::GeographySettings{}); });
+
+    // What the defaults produce, to tune them without looking at the map.
+    const tf::Hydrology& water = geography.hydrology;
+    int land = 0;
+    int lakes = 0;
+    int rivers = 0;
+    for (std::size_t i = 0; i < water.flow.size(); ++i) {
+        const float h = map.values()[i];
+        land += water.sea[i] ? 0 : 1;
+        lakes += water.isLake(i, h) ? 1 : 0;
+        rivers += water.isRiver(i, h) ? 1 : 0;
+    }
+    std::printf("  land %d cells, lakes %d, rivers %d\n", land, lakes, rivers);
+
+    // Share of each biome on land (Sea, Glacier, Tundra, ... in enum order), for the default
+    // climate and for a hot south.
+    const auto printBiomes = [&](const char* name, const tf::Geography& result) {
+        std::array<int, 10> biomes{};
+        for (const tf::Biome biome : result.climate.biome) {
+            ++biomes[static_cast<std::size_t>(biome)];
+        }
+        std::printf("  %-8s", name);
+        for (std::size_t b = 1; b < biomes.size(); ++b) {
+            std::printf(" %5.1f", 100.0 * biomes[b] / std::max(1, land));
+        }
+        std::printf("\n");
+    };
+    std::printf("  %% land:  glac  tund  taig  frst  mead  step  dsrt  swmp  mnts\n");
+    printBiomes("default", geography);
+    tf::GeographySettings hotSouth;
+    hotSouth.southTemperature = 1.0f;
+    printBiomes("hot", tf::analyzeGeography(map, hotSouth));
 }

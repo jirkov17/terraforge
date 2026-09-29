@@ -2,9 +2,12 @@
 add_library(terraforge_core STATIC
     core/AppSettings.cpp
     core/Brush.cpp
+    core/Climate.cpp
     core/ContinentShape.cpp
     core/Erosion.cpp
+    core/Geography.cpp
     core/Heightmap.cpp
+    core/Hydrology.cpp
     core/Localization.cpp
     core/MapColorizer.cpp
     core/TerrainGenerator.cpp)

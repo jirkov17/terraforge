@@ -62,8 +62,14 @@ void App::run() {
     while (!WindowShouldClose() && !m_quitRequested) {
         handleInput(GetFrameTime());
 
+        // Rivers and lakes take tens of milliseconds: recompute them once a stroke is finished,
+        // not in every frame of it.
+        if (m_geographyDirty && !IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+            updateGeography();
+        }
         if (m_needsRecolor) {
-            m_renderer.update(m_map, m_colors);
+            // Outdated rivers would float over the new terrain: leave them out until updated.
+            m_renderer.update(m_map, m_colors, m_geographyDirty ? nullptr : &m_geography);
             m_needsRecolor = false;
         }
 
@@ -142,6 +148,10 @@ void App::handleShortcuts() {
     if (IsKeyPressed(KEY_F)) {
         fitMapToScreen();
     }
+    if (IsKeyPressed(KEY_M)) {  // relief map <-> biome map
+        m_colors.mode = m_colors.mode == MapMode::Relief ? MapMode::Biomes : MapMode::Relief;
+        m_needsRecolor = true;
+    }
 }
 
 void App::paint(float dt) {
@@ -178,7 +188,7 @@ void App::paint(float dt) {
     }
 
     if (applyBrush(m_map, brush, cell.x, cell.y, dt)) {
-        m_needsRecolor = true;
+        terrainChanged();
         m_hasManualEdits = true;
     }
 }
@@ -203,7 +213,7 @@ void App::regenerate() {
 
 void App::rebuildTerrain() {
     combineTerrain(m_map, m_noise, m_shapeMask, m_generator.shapeStrength);
-    m_needsRecolor = true;
+    terrainChanged();
     m_hasManualEdits = false;
 }
 
@@ -225,11 +235,23 @@ void App::runErosion() {
     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start);
 
-    m_needsRecolor = true;
+    terrainChanged();
     m_hasManualEdits = true;  // regenerating would throw the erosion away
     const long long milliseconds = elapsed.count();
     m_statusMessage = std::vformat(m_text(TextId::ErosionDone),
                                    std::make_format_args(m_erosionDroplets, milliseconds));
+}
+
+void App::terrainChanged() {
+    m_needsRecolor = true;
+    m_geographyDirty = true;
+}
+
+void App::updateGeography() {
+    m_geographySettings.seaLevel = m_colors.seaLevel;
+    m_geography = analyzeGeography(m_map, m_geographySettings);
+    m_geographyDirty = false;
+    m_needsRecolor = true;
 }
 
 void App::fitMapToScreen() {

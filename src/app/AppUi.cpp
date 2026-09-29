@@ -75,6 +75,16 @@ constexpr TextId shapeName(ShapePreset preset) noexcept {
     return TextId::ShapeContinent;
 }
 
+// The biome texts follow the Biome enum order, so the name is found by offset. The assert
+// breaks the build if someone adds a biome without adding its text in the same place.
+static_assert(static_cast<int>(TextId::BiomeMountains) - static_cast<int>(TextId::BiomeSea) ==
+                  static_cast<int>(Biome::Mountains) - static_cast<int>(Biome::Sea),
+              "Biome texts must follow the Biome enum");
+
+constexpr TextId biomeName(Biome biome) noexcept {
+    return static_cast<TextId>(static_cast<int>(TextId::BiomeSea) + static_cast<int>(biome));
+}
+
 }  // namespace
 
 void App::drawBrushCursor() const {
@@ -150,6 +160,18 @@ float App::drawMainMenu() {
         if (ImGui::MenuItem(m_text(TextId::MenuCoastline), nullptr, &m_colors.coastline)) {
             m_needsRecolor = true;
         }
+        if (ImGui::MenuItem(m_text(TextId::MenuRivers), nullptr, &m_colors.rivers)) {
+            m_needsRecolor = true;
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem(m_text(TextId::MenuReliefMap), "M", m_colors.mode == MapMode::Relief)) {
+            m_colors.mode = MapMode::Relief;
+            m_needsRecolor = true;
+        }
+        if (ImGui::MenuItem(m_text(TextId::MenuBiomeMap), "M", m_colors.mode == MapMode::Biomes)) {
+            m_colors.mode = MapMode::Biomes;
+            m_needsRecolor = true;
+        }
         ImGui::EndMenu();
     }
 
@@ -210,9 +232,25 @@ float App::drawStatusBar() {
         const bool hoveringMap = !ImGui::GetIO().WantCaptureMouse && m_map.contains(x, y);
         if (hoveringMap) {
             const float h = m_map.at(x, y);
+            TextId kind = h < m_colors.seaLevel ? TextId::StatusWater : TextId::StatusLand;
+            const bool knowsGeography = !m_geographyDirty && kind == TextId::StatusLand;
+            const std::size_t i =
+                static_cast<std::size_t>(y) * static_cast<std::size_t>(m_map.width()) +
+                static_cast<std::size_t>(x);
+            if (knowsGeography) {
+                const Hydrology& water = m_geography.hydrology;
+                if (water.isLake(i, h)) {
+                    kind = TextId::StatusLake;
+                } else if (water.isRiver(i, h)) {
+                    kind = TextId::StatusRiver;
+                }
+            }
             ImGui::Text("%s %d, %d   %s %.3f (%s)", m_text(TextId::StatusCell), x, y,
-                        m_text(TextId::StatusHeight), static_cast<double>(h),
-                        m_text(h < m_colors.seaLevel ? TextId::StatusWater : TextId::StatusLand));
+                        m_text(TextId::StatusHeight), static_cast<double>(h), m_text(kind));
+            if (knowsGeography) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("%s", m_text(biomeName(m_geography.climate.biome[i])));
+            }
         } else {
             ImGui::TextDisabled("%s", m_text(TextId::StatusOutsideMap));
         }
@@ -306,7 +344,7 @@ float App::drawPropertiesPanel(float top) {
                                     ImGuiTreeNodeFlags_DefaultOpen)) {
             labelAbove(m_text(TextId::SeaLevel));
             if (ImGui::SliderFloat("##sea", &m_colors.seaLevel, 0.0f, 1.0f, "%.3f")) {
-                m_needsRecolor = true;
+                terrainChanged();  // the coast moves, so lakes and rivers change too
             }
             ImGui::BeginDisabled(!m_colors.hillshade);  // turned on and off in the View menu
             labelAbove(m_text(TextId::HillshadeStrength));
@@ -450,6 +488,50 @@ void App::drawGeographyWindow() {
         if (ImGui::Button(withIcon(ICON_FA_CLOUD_RAIN, m_text(TextId::Erode)).c_str(),
                           {-FLT_MIN, 0.0f})) {
             runErosion();
+        }
+    }
+
+    if (ImGui::CollapsingHeader(withId(m_text(TextId::MenuRivers), "rivers").c_str(),
+                                ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (ImGui::Checkbox(withId(m_text(TextId::MenuRivers), "showrivers").c_str(),
+                            &m_colors.rivers)) {
+            m_needsRecolor = true;
+        }
+        labelAbove(m_text(TextId::RiverThreshold));
+        if (ImGui::SliderFloat("##riverthreshold", &m_geographySettings.riverThreshold, 20.0f,
+                               5'000.0f, "%.0f", ImGuiSliderFlags_Logarithmic)) {
+            // Only the drawing depends on the threshold: update it live while dragging.
+            m_geography.hydrology.settings.riverThreshold = m_geographySettings.riverThreshold;
+            m_needsRecolor = true;
+        }
+        ImGui::SetItemTooltip("%s", m_text(TextId::RiverThresholdTooltip));
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            m_geographyDirty = true;  // rivers make the land around them wetter: redo the climate
+        }
+    }
+
+    if (ImGui::CollapsingHeader(withId(m_text(TextId::SectionClimate), "climate").c_str(),
+                                ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (ImGui::RadioButton(m_text(TextId::MenuReliefMap), m_colors.mode == MapMode::Relief)) {
+            m_colors.mode = MapMode::Relief;
+            m_needsRecolor = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::RadioButton(m_text(TextId::MenuBiomeMap), m_colors.mode == MapMode::Biomes)) {
+            m_colors.mode = MapMode::Biomes;
+            m_needsRecolor = true;
+        }
+        labelAbove(m_text(TextId::NorthTemperature));
+        ImGui::SliderFloat("##north", &m_geographySettings.northTemperature, 0.0f, 1.0f, "%.2f");
+        ImGui::SetItemTooltip("%s", m_text(TextId::TemperatureTooltip));
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            m_geographyDirty = true;
+        }
+        labelAbove(m_text(TextId::SouthTemperature));
+        ImGui::SliderFloat("##south", &m_geographySettings.southTemperature, 0.0f, 1.0f, "%.2f");
+        ImGui::SetItemTooltip("%s", m_text(TextId::TemperatureTooltip));
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            m_geographyDirty = true;
         }
     }
     ImGui::End();

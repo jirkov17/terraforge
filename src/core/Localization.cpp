@@ -28,6 +28,9 @@ constexpr auto kTranslations = std::to_array<Translation>({
     {TextId::MenuFitToWindow, "Fit map to window", "Вписать карту в окно"},
     {TextId::MenuHillshade, "Hillshade", "Отмывка рельефа"},
     {TextId::MenuCoastline, "Coastline", "Береговая линия"},
+    {TextId::MenuRivers, "Rivers and lakes", "Реки и озёра"},
+    {TextId::MenuReliefMap, "Relief map", "Карта рельефа"},
+    {TextId::MenuBiomeMap, "Biome map", "Карта биомов"},
     {TextId::MenuLanguage, "Language", "Язык"},
     {TextId::MenuHelp, "Help", "Справка"},
     {TextId::MenuControls, "Controls", "Управление"},
@@ -93,12 +96,36 @@ constexpr auto kTranslations = std::to_array<Translation>({
     {TextId::ErosionDropletsTooltip, "Each drop washes soil downhill. More drops = deeper valleys.",
      "Каждая капля смывает грунт вниз по склону. Больше капель — глубже долины."},
     {TextId::Erode, "Erode the terrain", "Размыть рельеф"},
+    {TextId::RiverThreshold, "River threshold", "Порог рек"},
+    {TextId::RiverThresholdTooltip,
+     "How many cells must drain through a point for a river to appear there. Lower = more rivers.",
+     "Сколько клеток должно стекать через точку, чтобы там появилась река. Меньше — больше рек."},
+    {TextId::SectionClimate, "Climate", "Климат"},
+    {TextId::NorthTemperature, "Warmth in the north", "Тепло на севере"},
+    {TextId::SouthTemperature, "Warmth in the south", "Тепло на юге"},
+    {TextId::TemperatureTooltip,
+     "0 = eternal ice, 1 = scorching heat. Mountains are always colder.",
+     "0 = вечные льды, 1 = зной. В горах всегда холоднее."},
+
+    // Biomes
+    {TextId::BiomeSea, "sea", "море"},
+    {TextId::BiomeGlacier, "glacier", "ледник"},
+    {TextId::BiomeTundra, "tundra", "тундра"},
+    {TextId::BiomeTaiga, "taiga", "тайга"},
+    {TextId::BiomeForest, "forest", "лес"},
+    {TextId::BiomeMeadow, "meadows", "луга"},
+    {TextId::BiomeSteppe, "steppe", "степь"},
+    {TextId::BiomeDesert, "desert", "пустыня"},
+    {TextId::BiomeSwamp, "swamp", "болото"},
+    {TextId::BiomeMountains, "mountains", "горы"},
 
     // Status bar
     {TextId::StatusCell, "Cell", "Клетка"},
     {TextId::StatusHeight, "height", "высота"},
     {TextId::StatusWater, "water", "вода"},
     {TextId::StatusLand, "land", "суша"},
+    {TextId::StatusLake, "lake", "озеро"},
+    {TextId::StatusRiver, "river", "река"},
     {TextId::StatusOutsideMap, "Cursor is outside the map", "Курсор за пределами карты"},
     {TextId::StatusZoom, "Zoom", "Масштаб"},
 
@@ -118,8 +145,8 @@ constexpr auto kTranslations = std::to_array<Translation>({
     {TextId::HelpPan, "RMB / MMB drag: move the map", "ПКМ / СКМ: двигать карту"},
     {TextId::HelpZoom, "Wheel: zoom, Ctrl + wheel: brush size",
      "Колесо: масштаб, Ctrl + колесо: размер кисти"},
-    {TextId::HelpKeys, "1-6: tools, [ ]: brush size, F: fit to window",
-     "1-6: инструменты, [ ]: размер кисти, F: вписать в окно"},
+    {TextId::HelpKeys, "1-6: tools, [ ]: brush size, F: fit to window, M: relief / biomes",
+     "1-6: инструменты, [ ]: размер кисти, F: вписать в окно, M: рельеф / биомы"},
 });
 
 // Checks at compile time that the table can be indexed directly by TextId.

@@ -2,9 +2,11 @@ add_executable(terraforge_tests
     AppSettingsTests.cpp
     Benchmarks.cpp
     BrushTests.cpp
+    ClimateTests.cpp
     ContinentShapeTests.cpp
     ErosionTests.cpp
     HeightmapTests.cpp
+    HydrologyTests.cpp
     LocalizationTests.cpp
     MapColorizerTests.cpp
     TerrainGeneratorTests.cpp)
