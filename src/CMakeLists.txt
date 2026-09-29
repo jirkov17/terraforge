@@ -2,6 +2,7 @@
 add_library(terraforge_core STATIC
     core/Brush.cpp
     core/Heightmap.cpp
+    core/Localization.cpp
     core/MapColorizer.cpp
     core/TerrainGenerator.cpp)
 target_include_directories(terraforge_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

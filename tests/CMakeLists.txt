@@ -1,6 +1,7 @@
 add_executable(terraforge_tests
     BrushTests.cpp
     HeightmapTests.cpp
+    LocalizationTests.cpp
     MapColorizerTests.cpp
     TerrainGeneratorTests.cpp)
 target_link_libraries(terraforge_tests PRIVATE terraforge_core GTest::gtest_main)
